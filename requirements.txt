@@ -1,0 +1,9 @@
+openai-agents
+openai
+python-dotenv
+fastapi
+uvicorn
+httpx
+websockets
+numpy
+pydantic
