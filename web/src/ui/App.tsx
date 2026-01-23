@@ -343,15 +343,19 @@ function WelcomeScreen() {
             key={i}
             className="data-card"
             style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 10,
               textAlign: 'left',
               cursor: 'pointer',
               border: '1px solid var(--border-color)',
               fontSize: 14,
-              color: 'var(--text-secondary)'
+              color: 'var(--text-secondary)',
+              lineHeight: 1.4
             }}
           >
-            <Sparkles size={14} style={{ marginRight: 8, color: 'var(--accent)' }} />
-            {prompt}
+            <Sparkles size={16} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 2 }} />
+            <span>{prompt}</span>
           </button>
         ))}
       </div>
@@ -511,15 +515,25 @@ export default function App() {
     }}>
       {/* Header */}
       <header style={{ 
-        padding: '12px 24px',
-        borderBottom: '1px solid var(--border-color)',
+        padding: '14px 24px',
+        borderBottom: '1px solid #333',
         display: 'flex',
         alignItems: 'center',
-        gap: 16,
-        background: 'var(--bg-secondary)'
+        gap: 12,
+        background: '#1a1a1a'
       }}>
-        <Building2 size={24} color="var(--accent)" />
-        <span style={{ fontWeight: 600, fontSize: 16 }}>Kahua Assistant</span>
+        <div style={{
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          background: 'var(--accent)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <Building2 size={18} color="white" />
+        </div>
+        <span style={{ fontWeight: 600, fontSize: 15 }}>Kahua Assistant</span>
         
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
@@ -555,7 +569,8 @@ export default function App() {
       {/* Input */}
       <footer style={{ 
         padding: '16px 24px 24px',
-        background: 'var(--bg-primary)'
+        background: 'var(--bg-primary)',
+        borderTop: '1px solid #222'
       }}>
         <div style={{ 
           maxWidth: 800, 
