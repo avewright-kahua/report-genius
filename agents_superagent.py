@@ -25,8 +25,8 @@ azure_client = AsyncAzureOpenAI(
 MODEL_DEPLOYMENT = os.environ["AZURE_DEPLOYMENT"]
 
 # Kahua constants and auth helpers
-ACTIVITY_URL = "https://devweeklyservice.kahua.com/v2/domains/AWrightCo/projects/{project_id}/apps/kahua_AEC_RFI/activities/run"
-QUERY_URL_TEMPLATE = "https://devweeklyservice.kahua.com/v2/domains/AWrightCo/projects/{project_id}/query?returnDefaultAttributes=true"
+# ACTIVITY_URL = "https://devweeklyservice.kahua.com/v2/domains/AWrightCo/projects/{project_id}/apps/kahua_AEC_RFI/activities/run"
+QUERY_URL_TEMPLATE = "https://demo01service.kahua.com/v2/domains/Summit/projects/{project_id}/query?returnDefaultAttributes=true"
 
 KAHUA_BASIC_AUTH = os.getenv("KAHUA_BASIC_AUTH")
 
@@ -439,13 +439,6 @@ here is a list of the string names of some more entityDefs:
     'kahua_WorkPackage.WorkPackage']
 
 NEVER make up entityDefs or fields. Only use the ones provided.
-
-Short API overview (handled by query_entities tool):
-The query_entities tool POSTs to:
-
-https://devweeklyservice.kahua.com/v2/domains/AWrightCo/projects/<project_id>/query?returnDefaultAttributes=true
-
-With JSON payload containing PropertyName="Query" and EntityDef=<entity_def>
 
 Usage:
 - query_entities("rfi") → queries RFIs from root project (project_id=0)
