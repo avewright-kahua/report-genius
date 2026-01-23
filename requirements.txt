@@ -1,9 +1,14 @@
 openai-agents
 openai
 python-dotenv
-fastapi
+fastapi>=0.100.0
 uvicorn
 httpx
 websockets
 numpy
-pydantic
+pydantic>=2.0.0
+ipywidgets
+
+# Report generation
+python-docx>=1.0.0
+matplotlib>=3.8

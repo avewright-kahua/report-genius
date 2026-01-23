@@ -1,0 +1,21 @@
+Goal: 
+Agent can query any entity and create any entity safely. 
+
+Necessities:
+- list of all entities in domain
+- complete schema of every entity
+    WITH required fields labelled accurately
+- consistent logic 
+    ex. Create contract item by defining it as 
+    
+    Items: {entityDef: kahua_Contract.ContractItem, CostEstimatedValue: ....}
+
+    inside payload of Contract post request
+
+- Upload media
+
+
+LLM with tools, instead of hardcoding logic app by app i want it to be somewhat dynamic
+which is why i started with ad hoc endpoints. It has two tools: one to query schema by 
+entity and build a model and one to post using that schema. 
+
