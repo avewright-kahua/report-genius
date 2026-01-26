@@ -570,6 +570,239 @@ async def generate_report(
         }
 
 
+# Template-aware report generation
+from templates import get_template_store
+
+@function_tool
+async def list_report_templates(category: Optional[str] = None, search: Optional[str] = None) -> dict:
+    """
+    List available report templates that can be used to generate consistent, repeatable reports.
+    
+    Args:
+        category: Optional filter by category. Options: "cost", "field", "executive", "custom"
+        search: Optional search term to filter templates by name or description
+    
+    Returns:
+        Dict with list of templates including their IDs, names, descriptions, and categories.
+    """
+    try:
+        store = get_template_store()
+        templates = store.list_templates(category=category, search=search)
+        
+        return {
+            "status": "ok",
+            "count": len(templates),
+            "templates": [
+                {
+                    "id": t.id,
+                    "name": t.name,
+                    "description": t.description,
+                    "category": t.category,
+                    "tags": t.tags,
+                    "sections": [{"title": s.title, "type": s.section_type} for s in t.sections]
+                }
+                for t in templates
+            ]
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@function_tool
+async def generate_report_from_template(
+    template_id: str,
+    project_id: int = 0,
+    project_name: Optional[str] = None,
+    custom_title: Optional[str] = None,
+    date_range_start: Optional[str] = None,
+    date_range_end: Optional[str] = None,
+    additional_filters_json: Optional[str] = None
+) -> dict:
+    """
+    Generate a report using a saved template. Templates provide consistent structure and formatting.
+    
+    Args:
+        template_id: The ID of the template to use (get from list_report_templates)
+        project_id: Project ID to pull data from. Use 0 for org-wide.
+        project_name: Project name to include in title (optional)
+        custom_title: Override the template's title (optional)
+        date_range_start: Filter data from this date (YYYY-MM-DD format)
+        date_range_end: Filter data to this date (YYYY-MM-DD format)
+        additional_filters_json: Extra conditions as JSON string
+    
+    Returns:
+        Dict with report download URL and metadata.
+    """
+    try:
+        from datetime import datetime
+        
+        store = get_template_store()
+        template = store.get_template(template_id)
+        
+        if not template:
+            return {"status": "error", "message": f"Template '{template_id}' not found"}
+        
+        # Build title from template
+        title = custom_title or template.title_template
+        if project_name:
+            title = title.replace("{project_name}", project_name)
+        title = title.replace("{date}", datetime.now().strftime("%B %d, %Y"))
+        
+        subtitle = template.subtitle_template
+        if subtitle:
+            subtitle = subtitle.replace("{date}", datetime.now().strftime("%B %d, %Y"))
+            if project_name:
+                subtitle = subtitle.replace("{project_name}", project_name)
+        
+        # Build markdown content from sections
+        markdown_parts = []
+        charts = []
+        chart_idx = 0
+        
+        for section in sorted(template.sections, key=lambda s: s.order):
+            if section.section_type == "summary":
+                markdown_parts.append(f"## {section.title}\n\n{section.content or 'Summary of key findings.'}\n")
+            
+            elif section.section_type == "text":
+                markdown_parts.append(f"## {section.title}\n\n{section.content or ''}\n")
+            
+            elif section.section_type == "metrics":
+                markdown_parts.append(f"## {section.title}\n\n{section.content or 'Key metrics displayed here.'}\n")
+            
+            elif section.section_type == "table" and section.entity_def:
+                # Query data for this section
+                ent = resolve_entity_def(section.entity_def)
+                conditions = []
+                if section.conditions:
+                    conditions.extend(section.conditions)
+                if additional_filters_json:
+                    try:
+                        conditions.extend(json.loads(additional_filters_json))
+                    except:
+                        pass
+                
+                # Date range filters
+                if date_range_start:
+                    conditions.append({"path": "CreatedDateTime", "type": "GreaterThanOrEqualTo", "value": date_range_start})
+                if date_range_end:
+                    conditions.append({"path": "CreatedDateTime", "type": "LessThanOrEqualTo", "value": date_range_end})
+                
+                query_url = QUERY_URL_TEMPLATE.format(project_id=project_id)
+                qpayload = {"PropertyName": "Query", "EntityDef": ent, "Take": "100"}
+                if conditions:
+                    qpayload["Condition"] = [
+                        {"PropertyName": "Data", "Path": c["path"], "Type": c["type"], "Value": c.get("value", "")}
+                        for c in conditions
+                    ]
+                
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(query_url, headers=HEADERS_JSON(), json=qpayload)
+                    body = resp.json() if resp.status_code < 400 else {}
+                
+                entities = []
+                for key in ("entities", "results", "items"):
+                    if isinstance(body.get(key), list):
+                        entities = body[key]
+                        break
+                
+                if entities:
+                    fields = section.fields or list(entities[0].keys())[:6]
+                    # Build markdown table
+                    header = "| " + " | ".join(fields) + " |"
+                    separator = "| " + " | ".join(["---"] * len(fields)) + " |"
+                    rows = []
+                    for ent in entities[:50]:  # Limit rows
+                        row = "| " + " | ".join(str(ent.get(f, ""))[:40] for f in fields) + " |"
+                        rows.append(row)
+                    
+                    markdown_parts.append(f"## {section.title}\n\n{header}\n{separator}\n" + "\n".join(rows) + "\n")
+                else:
+                    markdown_parts.append(f"## {section.title}\n\n*No data found for this section.*\n")
+            
+            elif section.section_type == "chart" and section.chart:
+                chart_spec = section.chart
+                # Query and aggregate data for chart
+                ent = resolve_entity_def(chart_spec.data_source)
+                
+                query_url = QUERY_URL_TEMPLATE.format(project_id=project_id)
+                qpayload = {"PropertyName": "Query", "EntityDef": ent, "Take": "500"}
+                
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(query_url, headers=HEADERS_JSON(), json=qpayload)
+                    body = resp.json() if resp.status_code < 400 else {}
+                
+                entities = []
+                for key in ("entities", "results", "items"):
+                    if isinstance(body.get(key), list):
+                        entities = body[key]
+                        break
+                
+                if entities:
+                    # Aggregate by group_by field
+                    counts = {}
+                    for ent_item in entities:
+                        group_val = str(ent_item.get(chart_spec.group_by, "Unknown") or "Unknown")
+                        if chart_spec.aggregation == "count":
+                            counts[group_val] = counts.get(group_val, 0) + 1
+                        elif chart_spec.aggregation == "sum" and chart_spec.value_field:
+                            val = ent_item.get(chart_spec.value_field, 0)
+                            try:
+                                val = float(val) if val else 0
+                            except:
+                                val = 0
+                            counts[group_val] = counts.get(group_val, 0) + val
+                    
+                    labels = list(counts.keys())
+                    values = list(counts.values())
+                    
+                    charts.append({
+                        "chart_type": chart_spec.chart_type,
+                        "title": chart_spec.title,
+                        "data": {"labels": labels, "values": values}
+                    })
+                    
+                    markdown_parts.append(f"## {section.title}\n\n{{{{CHART_{chart_idx}}}}}\n")
+                    chart_idx += 1
+                else:
+                    markdown_parts.append(f"## {section.title}\n\n*No data available for chart.*\n")
+        
+        markdown_content = "\n".join(markdown_parts)
+        
+        # Generate the report
+        import asyncio
+        loop = asyncio.get_event_loop()
+        
+        def _generate():
+            return create_report(
+                title=title,
+                markdown_content=markdown_content,
+                charts=charts if charts else None,
+                subtitle=subtitle,
+                header_color=template.header_color,
+                accent_color=template.accent_color
+            )
+        
+        result = await loop.run_in_executor(None, _generate)
+        filename = result["filename"]
+        
+        base_url = os.getenv("REPORT_BASE_URL", "http://localhost:8000")
+        download_url = f"{base_url}/reports/{filename}"
+        
+        return {
+            "status": "ok",
+            "template_used": template.name,
+            "filename": filename,
+            "download_url": download_url,
+            "sections_generated": len(template.sections),
+            "charts_generated": len(charts),
+            "message": f"Report generated using '{template.name}' template. [Download Report]({download_url})"
+        }
+        
+    except Exception as e:
+        log.exception("Template report generation failed")
+        return {"status": "error", "message": f"Failed to generate report: {str(e)}"}
+
+
 class ProjectItem(BaseModel):
     name: str = Field(..., description="Project Name")
     description: Optional[str] = None
@@ -694,7 +927,22 @@ Other entities exist—use `discover_environment` to find them.
 
 ## REPORT GENERATION
 
-### Markdown Format
+### Two Approaches
+
+**1. Template-Based (Preferred for consistency)**
+Use `list_report_templates()` to see available templates, then `generate_report_from_template()`.
+Templates ensure consistent formatting and structure across reports.
+
+Built-in templates:
+- **RFI Status Report** (field) - Status breakdown, response times, discipline analysis
+- **Contract Summary Report** (cost) - Financial overview, vendor breakdown, change orders
+- **Punch List Closeout Report** (field) - Completion progress by location/trade
+- **Executive Project Summary** (executive) - High-level KPIs and dashboard
+
+**2. Custom Reports (Ad-hoc)**
+Use `generate_report()` with custom markdown content for one-off reports.
+
+### Markdown Format (for custom reports)
 - Headers: # ## ###
 - Tables: | Col1 | Col2 |
 - Charts: {{CHART_0}}, {{CHART_1}} (provide charts_json)
@@ -725,8 +973,9 @@ Apply domain knowledge:
 1. **Project names → find_project() FIRST** - never guess IDs
 2. **Never fabricate data** - only report what you queried
 3. **Act immediately** - don't ask permission
-4. **Use conversation context** - don't re-query existing data
-5. **Provide insights** - explain what the data means
+4. **Use templates when available** - for consistent, professional reports
+5. **Use conversation context** - don't re-query existing data
+6. **Provide insights** - explain what the data means
 """
 
 super_agent = Agent(
@@ -734,10 +983,7 @@ super_agent = Agent(
     handoff_description="Expert construction project analyst specializing in data-driven reports, analytics, and professional documentation.",
     model=OpenAIChatCompletionsModel(model='gpt-5-chat', openai_client=azure_client),
     instructions=SUPER_AGENT_INSTRUCTIONS,
-    tools=[find_project, discover_environment, get_entity_schema, query_entities, generate_report],
-)
+    tools=[find_project, discover_environment, get_entity_schema, query_entities, generate_report, list_report_templates, generate_report_from_template],)
 
 def get_super_agent() -> Agent:
     return super_agent
-
-

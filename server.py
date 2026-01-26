@@ -185,6 +185,217 @@ async def list_reports() -> Dict[str, Any]:
     return {"reports": reports}
 
 
+# ============== Template Management API ==============
+
+from templates import get_template_store, ReportTemplate, SectionTemplate, ChartTemplate
+
+class TemplateCreateRequest(BaseModel):
+    name: str
+    description: str
+    category: str  # "cost", "field", "executive", "custom"
+    title_template: str
+    subtitle_template: str | None = None
+    sections: list[dict] = []
+    default_params: dict = {}
+    header_color: str = "#1a365d"
+    accent_color: str = "#3182ce"
+    tags: list[str] = []
+    is_public: bool = False
+
+
+class TemplateUpdateRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    category: str | None = None
+    title_template: str | None = None
+    subtitle_template: str | None = None
+    sections: list[dict] | None = None
+    default_params: dict | None = None
+    header_color: str | None = None
+    accent_color: str | None = None
+    tags: list[str] | None = None
+    is_public: bool | None = None
+
+
+class SavedQueryRequest(BaseModel):
+    name: str
+    query_text: str
+    description: str | None = None
+    entity_def: str | None = None
+    conditions: list[dict] | None = None
+
+
+@app.get("/api/templates")
+async def list_templates(
+    category: str | None = None,
+    search: str | None = None
+) -> Dict[str, Any]:
+    """List all report templates with optional filtering."""
+    store = get_template_store()
+    templates = store.list_templates(category=category, search=search)
+    return {
+        "templates": [t.to_dict() for t in templates],
+        "count": len(templates)
+    }
+
+
+@app.get("/api/templates/{template_id}")
+async def get_template(template_id: str) -> Dict[str, Any]:
+    """Get a single template by ID."""
+    store = get_template_store()
+    template = store.get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return template.to_dict()
+
+
+@app.post("/api/templates")
+async def create_template(req: TemplateCreateRequest) -> Dict[str, Any]:
+    """Create a new report template."""
+    store = get_template_store()
+    
+    # Convert sections from dict to SectionTemplate objects
+    sections = []
+    for i, s in enumerate(req.sections):
+        chart = None
+        if s.get("chart"):
+            chart = ChartTemplate(**s["chart"])
+        sections.append(SectionTemplate(
+            title=s.get("title", f"Section {i+1}"),
+            section_type=s.get("section_type", "text"),
+            content=s.get("content"),
+            entity_def=s.get("entity_def"),
+            fields=s.get("fields"),
+            conditions=s.get("conditions"),
+            chart=chart,
+            order=s.get("order", i)
+        ))
+    
+    template = ReportTemplate(
+        id="",  # Will be generated
+        name=req.name,
+        description=req.description,
+        category=req.category,
+        created_at="",  # Will be set
+        updated_at="",
+        title_template=req.title_template,
+        subtitle_template=req.subtitle_template,
+        sections=sections,
+        default_params=req.default_params,
+        header_color=req.header_color,
+        accent_color=req.accent_color,
+        tags=req.tags,
+        is_public=req.is_public
+    )
+    
+    created = store.create_template(template)
+    return {"status": "ok", "template": created.to_dict()}
+
+
+@app.put("/api/templates/{template_id}")
+async def update_template(template_id: str, req: TemplateUpdateRequest) -> Dict[str, Any]:
+    """Update an existing template."""
+    store = get_template_store()
+    existing = store.get_template(template_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    # Update fields that were provided
+    if req.name is not None:
+        existing.name = req.name
+    if req.description is not None:
+        existing.description = req.description
+    if req.category is not None:
+        existing.category = req.category
+    if req.title_template is not None:
+        existing.title_template = req.title_template
+    if req.subtitle_template is not None:
+        existing.subtitle_template = req.subtitle_template
+    if req.default_params is not None:
+        existing.default_params = req.default_params
+    if req.header_color is not None:
+        existing.header_color = req.header_color
+    if req.accent_color is not None:
+        existing.accent_color = req.accent_color
+    if req.tags is not None:
+        existing.tags = req.tags
+    if req.is_public is not None:
+        existing.is_public = req.is_public
+    
+    # Handle sections update
+    if req.sections is not None:
+        sections = []
+        for i, s in enumerate(req.sections):
+            chart = None
+            if s.get("chart"):
+                chart = ChartTemplate(**s["chart"])
+            sections.append(SectionTemplate(
+                title=s.get("title", f"Section {i+1}"),
+                section_type=s.get("section_type", "text"),
+                content=s.get("content"),
+                entity_def=s.get("entity_def"),
+                fields=s.get("fields"),
+                conditions=s.get("conditions"),
+                chart=chart,
+                order=s.get("order", i)
+            ))
+        existing.sections = sections
+    
+    updated = store.update_template(existing)
+    return {"status": "ok", "template": updated.to_dict()}
+
+
+@app.delete("/api/templates/{template_id}")
+async def delete_template(template_id: str) -> Dict[str, Any]:
+    """Delete a template."""
+    store = get_template_store()
+    
+    # Prevent deletion of built-in templates
+    if template_id.startswith("builtin-"):
+        raise HTTPException(status_code=403, detail="Cannot delete built-in templates")
+    
+    success = store.delete_template(template_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"status": "ok", "deleted": template_id}
+
+
+# ============== Saved Queries API ==============
+
+@app.get("/api/queries")
+async def list_saved_queries(search: str | None = None) -> Dict[str, Any]:
+    """List all saved queries."""
+    store = get_template_store()
+    queries = store.get_saved_queries(search=search)
+    return {"queries": queries, "count": len(queries)}
+
+
+@app.post("/api/queries")
+async def save_query(req: SavedQueryRequest) -> Dict[str, Any]:
+    """Save a query for reuse."""
+    store = get_template_store()
+    query_id = store.save_query(
+        name=req.name,
+        query_text=req.query_text,
+        description=req.description,
+        entity_def=req.entity_def,
+        conditions=req.conditions
+    )
+    return {"status": "ok", "query_id": query_id}
+
+
+@app.delete("/api/queries/{query_id}")
+async def delete_query(query_id: str) -> Dict[str, Any]:
+    """Delete a saved query."""
+    store = get_template_store()
+    success = store.delete_saved_query(query_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Query not found")
+    return {"status": "ok", "deleted": query_id}
+
+
+# ============== Chat API ==============
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest) -> Dict[str, Any]:
     if not req.message or not req.message.strip():

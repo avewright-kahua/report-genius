@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState, memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Copy, Check, Send, Plus, Sparkles, Loader2, RotateCcw, ThumbsUp, ThumbsDown, Building2 } from 'lucide-react'
+import { Copy, Check, Send, Plus, Sparkles, Loader2, RotateCcw, ThumbsUp, ThumbsDown, Building2, FileText, ChevronRight, X, Search, Tag, FolderOpen } from 'lucide-react'
 
 type ChatMessage = {
   id: string
@@ -9,6 +9,18 @@ type ChatMessage = {
   content: string
   isStreaming?: boolean
   toolsUsed?: string[]
+}
+
+// Template types
+type ReportTemplate = {
+  id: string
+  name: string
+  description: string
+  category: string
+  tags: string[]
+  is_public: boolean
+  created_at: string
+  updated_at: string
 }
 
 // Generate unique IDs
@@ -285,8 +297,277 @@ function ThinkingIndicator({ status }: { status: string }) {
   )
 }
 
+// Category config for templates
+const CATEGORY_CONFIG: Record<string, { icon: string; color: string; label: string }> = {
+  cost: { icon: '💰', color: '#38a169', label: 'Cost & Contracts' },
+  field: { icon: '🏗️', color: '#3182ce', label: 'Field Operations' },
+  executive: { icon: '📊', color: '#805ad5', label: 'Executive' },
+  custom: { icon: '✨', color: '#dd6b20', label: 'Custom' },
+}
+
+// Template Library Sidebar
+function TemplateLibrary({ 
+  isOpen, 
+  onClose, 
+  onSelectTemplate 
+}: { 
+  isOpen: boolean
+  onClose: () => void
+  onSelectTemplate: (template: ReportTemplate) => void
+}) {
+  const [templates, setTemplates] = useState<ReportTemplate[]>([])
+  const [loading, setLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  
+  // Fetch templates
+  useEffect(() => {
+    if (isOpen) {
+      setLoading(true)
+      fetch('/api/templates')
+        .then(r => r.json())
+        .then(data => {
+          setTemplates(data.templates || [])
+          setLoading(false)
+        })
+        .catch(() => setLoading(false))
+    }
+  }, [isOpen])
+  
+  // Filter templates
+  const filtered = templates.filter(t => {
+    const matchesSearch = !search || 
+      t.name.toLowerCase().includes(search.toLowerCase()) ||
+      t.description.toLowerCase().includes(search.toLowerCase())
+    const matchesCategory = !selectedCategory || t.category === selectedCategory
+    return matchesSearch && matchesCategory
+  })
+  
+  // Group by category
+  const grouped = filtered.reduce((acc, t) => {
+    if (!acc[t.category]) acc[t.category] = []
+    acc[t.category].push(t)
+    return acc
+  }, {} as Record<string, ReportTemplate[]>)
+  
+  if (!isOpen) return null
+  
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      width: 380,
+      background: 'var(--bg-secondary)',
+      borderLeft: '1px solid var(--border-color)',
+      zIndex: 100,
+      display: 'flex',
+      flexDirection: 'column',
+      boxShadow: '-4px 0 20px rgba(0,0,0,0.3)'
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '16px 20px',
+        borderBottom: '1px solid var(--border-color)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12
+      }}>
+        <FileText size={20} style={{ color: 'var(--accent)' }} />
+        <h2 style={{ flex: 1, fontSize: 16, fontWeight: 600, margin: 0 }}>Report Templates</h2>
+        <button onClick={onClose} className="icon-btn">
+          <X size={18} />
+        </button>
+      </div>
+      
+      {/* Search */}
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)' }}>
+        <div style={{ position: 'relative' }}>
+          <Search size={16} style={{
+            position: 'absolute',
+            left: 12,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            color: 'var(--text-muted)'
+          }} />
+          <input
+            type="text"
+            placeholder="Search templates..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '10px 12px 10px 38px',
+              background: 'var(--bg-tertiary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 8,
+              color: 'var(--text-primary)',
+              fontSize: 14
+            }}
+          />
+        </div>
+        
+        {/* Category filters */}
+        <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setSelectedCategory(null)}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 16,
+              border: '1px solid var(--border-color)',
+              background: !selectedCategory ? 'var(--accent)' : 'transparent',
+              color: !selectedCategory ? 'white' : 'var(--text-secondary)',
+              fontSize: 12,
+              cursor: 'pointer'
+            }}
+          >
+            All
+          </button>
+          {Object.entries(CATEGORY_CONFIG).map(([key, { icon, label }]) => (
+            <button
+              key={key}
+              onClick={() => setSelectedCategory(key === selectedCategory ? null : key)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 16,
+                border: '1px solid var(--border-color)',
+                background: key === selectedCategory ? 'var(--accent)' : 'transparent',
+                color: key === selectedCategory ? 'white' : 'var(--text-secondary)',
+                fontSize: 12,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4
+              }}
+            >
+              <span>{icon}</span> {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      
+      {/* Template list */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+            <Loader2 size={24} className="thinking-indicator" />
+            <p style={{ marginTop: 12 }}>Loading templates...</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+            <FolderOpen size={32} style={{ marginBottom: 12, opacity: 0.5 }} />
+            <p>No templates found</p>
+          </div>
+        ) : (
+          Object.entries(grouped).map(([category, categoryTemplates]) => (
+            <div key={category} style={{ marginBottom: 20 }}>
+              <h3 style={{
+                fontSize: 11,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: 'var(--text-muted)',
+                marginBottom: 8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6
+              }}>
+                <span>{CATEGORY_CONFIG[category]?.icon || '📄'}</span>
+                {CATEGORY_CONFIG[category]?.label || category}
+              </h3>
+              {categoryTemplates.map(template => (
+                <button
+                  key={template.id}
+                  onClick={() => onSelectTemplate(template)}
+                  style={{
+                    width: '100%',
+                    padding: '14px 16px',
+                    marginBottom: 8,
+                    background: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 10,
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = 'var(--accent)'
+                    e.currentTarget.style.background = 'var(--bg-primary)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = 'var(--border-color)'
+                    e.currentTarget.style.background = 'var(--bg-tertiary)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{
+                        fontWeight: 500,
+                        fontSize: 14,
+                        color: 'var(--text-primary)',
+                        marginBottom: 4
+                      }}>
+                        {template.name}
+                      </div>
+                      <div style={{
+                        fontSize: 12,
+                        color: 'var(--text-muted)',
+                        lineHeight: 1.4
+                      }}>
+                        {template.description.length > 100 
+                          ? template.description.slice(0, 100) + '...' 
+                          : template.description}
+                      </div>
+                      {template.tags?.length > 0 && (
+                        <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
+                          {template.tags.slice(0, 3).map(tag => (
+                            <span key={tag} style={{
+                              padding: '2px 8px',
+                              background: 'var(--bg-primary)',
+                              borderRadius: 4,
+                              fontSize: 10,
+                              color: 'var(--text-muted)'
+                            }}>
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <ChevronRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }} />
+                  </div>
+                </button>
+              ))}
+            </div>
+          ))
+        )}
+      </div>
+      
+      {/* Footer */}
+      <div style={{
+        padding: '12px 16px',
+        borderTop: '1px solid var(--border-color)',
+        background: 'var(--bg-tertiary)'
+      }}>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
+          Select a template to generate a report
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // Welcome screen
-function WelcomeScreen() {
+function WelcomeScreen({ onQuickAction }: { onQuickAction: (prompt: string) => void }) {
+  const quickActions = [
+    { prompt: 'What projects do I have?', icon: '📁', desc: 'List all projects' },
+    { prompt: 'Show me all open RFIs', icon: '📋', desc: 'Open RFI status' },
+    { prompt: 'Generate a contracts report', icon: '📊', desc: 'Contract summary' },
+    { prompt: 'List punch list items', icon: '✅', desc: 'Punch list review' },
+    { prompt: 'What data exists in my environment?', icon: '🔍', desc: 'Data discovery' },
+    { prompt: 'Show me overdue items', icon: '⚠️', desc: 'Risk overview' },
+  ]
+  
   return (
     <div style={{ 
       display: 'flex', 
@@ -330,32 +611,45 @@ function WelcomeScreen() {
         display: 'grid', 
         gridTemplateColumns: 'repeat(2, 1fr)', 
         gap: 12,
-        maxWidth: 520,
+        maxWidth: 560,
         width: '100%'
       }}>
-        {[
-          'What projects do I have?',
-          'Show me all open RFIs',
-          'Generate a contracts report',
-          'List punch list items'
-        ].map((prompt, i) => (
+        {quickActions.map((action, i) => (
           <button
             key={i}
             className="data-card"
+            onClick={() => onQuickAction(action.prompt)}
             style={{
               display: 'flex',
               alignItems: 'flex-start',
-              gap: 10,
+              gap: 12,
               textAlign: 'left',
               cursor: 'pointer',
               border: '1px solid var(--border-color)',
               fontSize: 14,
               color: 'var(--text-secondary)',
-              lineHeight: 1.4
+              lineHeight: 1.4,
+              padding: '14px 16px',
+              transition: 'all 0.15s ease'
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = 'var(--accent)'
+              e.currentTarget.style.background = 'var(--bg-tertiary)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = 'var(--border-color)'
+              e.currentTarget.style.background = ''
             }}
           >
-            <Sparkles size={16} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 2 }} />
-            <span>{prompt}</span>
+            <span style={{ fontSize: 20 }}>{action.icon}</span>
+            <div>
+              <div style={{ fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2 }}>
+                {action.desc}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                "{action.prompt}"
+              </div>
+            </div>
           </button>
         ))}
       </div>
@@ -370,6 +664,7 @@ export default function App() {
   const [sessionId, setSessionId] = useState(() => getStoredSessionId() || generateSessionId())
   const [busy, setBusy] = useState(false)
   const [thinkingStatus, setThinkingStatus] = useState<string | null>(null)
+  const [showTemplates, setShowTemplates] = useState(false)
   
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -398,10 +693,11 @@ export default function App() {
     setMessages([])
   }, [])
   
-  const handleSend = useCallback(async () => {
-    if (!input.trim() || busy) return
+  // Core send function - accepts optional prompt for quick actions
+  const sendMessage = useCallback(async (messageText: string) => {
+    if (!messageText.trim() || busy) return
     
-    const userMsg: ChatMessage = { id: genId(), role: 'user', content: input.trim() }
+    const userMsg: ChatMessage = { id: genId(), role: 'user', content: messageText.trim() }
     const assistantMsg: ChatMessage = { id: genId(), role: 'assistant', content: '', isStreaming: true }
     
     setMessages(prev => [...prev, userMsg, assistantMsg])
@@ -497,7 +793,24 @@ export default function App() {
       })
       scrollToBottom()
     }
-  }, [input, busy, sessionId, scrollToBottom])
+  }, [busy, sessionId, scrollToBottom])
+  
+  // Wrapper for input field send
+  const handleSend = useCallback(() => {
+    sendMessage(input)
+  }, [input, sendMessage])
+  
+  // Handler for quick actions
+  const handleQuickAction = useCallback((prompt: string) => {
+    sendMessage(prompt)
+  }, [sendMessage])
+  
+  // Handler for template selection
+  const handleTemplateSelect = useCallback((template: ReportTemplate) => {
+    setShowTemplates(false)
+    const prompt = `Generate a "${template.name}" report using the template. Template description: ${template.description}`
+    sendMessage(prompt)
+  }, [sendMessage])
   
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -513,6 +826,13 @@ export default function App() {
       height: '100vh',
       background: 'var(--bg-primary)'
     }}>
+      {/* Template Library Sidebar */}
+      <TemplateLibrary 
+        isOpen={showTemplates} 
+        onClose={() => setShowTemplates(false)}
+        onSelectTemplate={handleTemplateSelect}
+      />
+      
       {/* Header */}
       <header style={{ 
         padding: '14px 24px',
@@ -536,6 +856,14 @@ export default function App() {
         <span style={{ fontWeight: 600, fontSize: 15 }}>Kahua Assistant</span>
         
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button 
+            className="btn-secondary" 
+            onClick={() => setShowTemplates(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <FileText size={14} />
+            Templates
+          </button>
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             Session: {sessionId.slice(0, 12)}...
           </span>
@@ -555,7 +883,7 @@ export default function App() {
         }}
       >
         {messages.length === 0 ? (
-          <WelcomeScreen />
+          <WelcomeScreen onQuickAction={handleQuickAction} />
         ) : (
           <>
             {messages.filter(m => !m.isStreaming || m.content).map(msg => (
