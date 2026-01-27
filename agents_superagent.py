@@ -7,7 +7,7 @@ from openai import AsyncAzureOpenAI
 
 # Environment cache file
 ENV_CACHE_FILE = Path(__file__).parent / ".env_cache.json"
-ENV_CACHE_TTL = 3600 * 24  # 24 hours default TTL
+ENV_CACHE_TTL = 3600 * 4  # 4 hours - reduced to limit stale data impact
 
 # Report generation
 from report_generator import create_report, ReportGenerator, ReportConfig, ChartSpec
@@ -45,16 +45,51 @@ HEADERS_JSON = lambda: {"Content-Type": "application/json", "Authorization": _au
 
 # Entity alias table (extend freely)
 ENTITY_ALIASES: Dict[str, str] = {
+    # Projects
     "project": "kahua_Project.Project",
+    "projects": "kahua_Project.Project",
+    # RFIs - all variations
     "rfi": "kahua_AEC_RFI.RFI",
+    "rfis": "kahua_AEC_RFI.RFI",
+    "request for information": "kahua_AEC_RFI.RFI",
+    "requests for information": "kahua_AEC_RFI.RFI",
+    # Submittals
     "submittal": "kahua_AEC_Submittal.Submittal",
+    "submittals": "kahua_AEC_Submittal.Submittal",
+    "submittal item": "kahua_AEC_Submittal.SubmittalItem",
+    "submittal items": "kahua_AEC_Submittal.SubmittalItem",
+    "submittal package": "kahua_AEC_SubmittalPackage.SubmittalPackage",
+    # Change Orders
     "change order": "kahua_AEC_ChangeOrder.ChangeOrder",
+    "change orders": "kahua_AEC_ChangeOrder.ChangeOrder",
+    "co": "kahua_AEC_ChangeOrder.ChangeOrder",
+    # Punch Lists
     "punchlist": "kahua_AEC_PunchList.PunchListItem",
     "punch list": "kahua_AEC_PunchList.PunchListItem",
+    "punchlist item": "kahua_AEC_PunchList.PunchListItem",
+    "punch list item": "kahua_AEC_PunchList.PunchListItem",
+    "punch": "kahua_AEC_PunchList.PunchListItem",
+    # Field Observations
     "field observation": "kahua_AEC_FieldObservation.FieldObservationItem",
+    "field observations": "kahua_AEC_FieldObservation.FieldObservationItem",
+    "observation": "kahua_AEC_FieldObservation.FieldObservationItem",
+    # Contracts
     "contract": "kahua_Contract.Contract",
+    "contracts": "kahua_Contract.Contract",
     "contract item": "kahua_Contract.ContractItem",
-
+    "contract items": "kahua_Contract.ContractItem",
+    # Invoices
+    "invoice": "kahua_ContractInvoice.ContractInvoice",
+    "invoices": "kahua_ContractInvoice.ContractInvoice",
+    # Daily Reports
+    "daily report": "kahua_AEC_DailyReport.DailyReport",
+    "daily reports": "kahua_AEC_DailyReport.DailyReport",
+    "daily": "kahua_AEC_DailyReport.DailyReport",
+    # Meetings
+    "meeting": "kahua_Meeting.Meeting",
+    "meetings": "kahua_Meeting.Meeting",
+    "action item": "kahua_Meeting.ActionItem",
+    "action items": "kahua_Meeting.ActionItem",
 }
 
 def resolve_entity_def(name_or_def: str) -> str:
@@ -215,6 +250,11 @@ async def discover_environment(project_id: int = 0, categories: Optional[List[st
         "entities_with_data": len(entities_with_data),
         "top_entities": sorted(entities_with_data, key=lambda x: x["count"], reverse=True)[:10]
     }
+    
+    # RELIABILITY FIX: Auto-retry if discovery returned 0 total records (likely scope issue)
+    if total_records == 0 and not refresh:
+        log.warning("Discovery returned 0 total records, retrying with fresh scan")
+        return await discover_environment(project_id, categories, scope, refresh=True)
     
     # Generate smart recommendations based on what data exists
     recs = []
@@ -412,6 +452,12 @@ async def query_entities(
     """
     ent = resolve_entity_def(entity_def)
     query_url = QUERY_URL_TEMPLATE.format(project_id=project_id)
+    
+    # CRITICAL FIX: If querying from root (project_id=0), default to Any scope for cross-partition results
+    # Without this, queries only search the root partition which may have 0 or few records
+    if project_id == 0 and not scope:
+        scope = "Any"
+        log.info(f"Auto-setting scope='Any' for domain-wide query (project_id=0)")
     
     # Build query payload
     qpayload: Dict[str, Any] = {
@@ -883,6 +929,26 @@ SUPER_AGENT_INSTRUCTIONS = """You are an expert Construction Project Analyst for
 ## CORE PRINCIPLE: DISCOVER, DON'T ASSUME
 
 You have access to real data. Never guess what exists—always check first.
+
+## VERIFICATION RULES - NEVER REPORT WRONG DATA
+
+**Before reporting "0 records" or "no data found":**
+1. If you used discover_environment(), ALWAYS follow up with a direct query_entities() call using scope="Any"
+2. Include the query_sent in your response so user can verify what was actually queried
+3. NEVER report 0 as a final answer for common entities (RFI, Contract, Submittal, PunchList) without a verification query
+
+**Zero-result sanity check:**
+If any query returns 0 for a common entity type in what appears to be an active environment, this is likely a scope issue. 
+Before reporting to user:
+1. Retry with scope="Any" 
+2. If still 0, explicitly state: "I found 0 records using this query: [show query]. This may indicate the data is stored under a different entity definition or project partition."
+
+**NEVER state "no data exists" based solely on discover_environment() results.**
+
+**Response patterns for zero results:**
+- ❌ WRONG: "There are no RFIs in your environment."
+- ✅ RIGHT: "My initial query returned 0 RFIs. Let me verify with a broader search..." [then run verification]
+- ✅ RIGHT: "I found 0 RFIs matching that criteria. Query used: [show query]. Would you like me to check with different parameters?"
 
 ## CRITICAL: PROJECT NAME RESOLUTION
 
