@@ -470,7 +470,21 @@ async def chat_stream(req: ChatRequest):
                     item = getattr(ev, "item", None)
                     item_type = getattr(item, "type", "")
                     if item_type:
-                        yield f"data: {json.dumps({"type": "item", "item_type": item_type})}\n\n"
+                        # Extract tool name for tool calls
+                        tool_name = None
+                        if item_type == "tool_call_item":
+                            # Try to get the tool name from various possible locations
+                            tool_name = getattr(item, "name", None) or getattr(item, "tool_name", None)
+                            # Try raw_item if name not directly accessible
+                            if not tool_name:
+                                raw_item = getattr(item, "raw_item", None)
+                                if raw_item:
+                                    tool_name = getattr(raw_item, "name", None)
+                        yield f"data: {json.dumps({"type": "item", "item_type": item_type, "tool_name": tool_name})}\n\n"
+                        
+                        # Also emit a tool_output event when tool completes
+                        if item_type == "tool_call_output_item":
+                            yield f"data: {json.dumps({"type": "tool_output", "tool_name": tool_name})}\n\n"
 
                 # occasional heartbeat to keep connections warm
                 now = asyncio.get_event_loop().time()

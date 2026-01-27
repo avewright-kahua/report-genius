@@ -1,8 +1,13 @@
-import os, json, logging, asyncio
+import os, json, logging, asyncio, time
+from pathlib import Path
 from typing import Optional, List, Any, Dict
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 from openai import AsyncAzureOpenAI
+
+# Environment cache file
+ENV_CACHE_FILE = Path(__file__).parent / ".env_cache.json"
+ENV_CACHE_TTL = 3600 * 24  # 24 hours default TTL
 
 # Report generation
 from report_generator import create_report, ReportGenerator, ReportConfig, ChartSpec
@@ -105,10 +110,30 @@ ENTITY_CATEGORIES = {
 
 # Tools: Discovery / Query / Report Generation
 
+def _load_env_cache() -> Dict[str, Any]:
+    """Load cached environment discovery results."""
+    if ENV_CACHE_FILE.exists():
+        try:
+            data = json.loads(ENV_CACHE_FILE.read_text())
+            return data
+        except Exception:
+            pass
+    return {}
+
+def _save_env_cache(cache_key: str, results: Dict[str, Any]) -> None:
+    """Save environment discovery results to cache."""
+    cache = _load_env_cache()
+    cache[cache_key] = {
+        "timestamp": time.time(),
+        "data": results
+    }
+    ENV_CACHE_FILE.write_text(json.dumps(cache, indent=2))
+
 @function_tool
-async def discover_environment(project_id: int = 0, categories: Optional[List[str]] = None, scope: Optional[str] = "Any") -> dict:
+async def discover_environment(project_id: int = 0, categories: Optional[List[str]] = None, scope: Optional[str] = "Any", refresh: bool = False) -> dict:
     """
     Discover what data exists in the Kahua environment. Returns entity counts by category.
+    Results are CACHED for 24 hours to avoid slow repeated scans.
     
     ALWAYS call this first when the user asks broad questions like:
     - "What do I have?"
@@ -121,10 +146,27 @@ async def discover_environment(project_id: int = 0, categories: Optional[List[st
         categories: Optional filter. Options: "cost", "field", "communications", "documents", "project", "risk".
                     If not specified, scans all categories.
         scope: Query scope. "Any" queries across ALL projects (default). "DomainPartition" for specific project only.
+        refresh: If True, bypass cache and force a fresh scan. Default False (use cache).
     
     Returns:
         Dict with entity counts organized by category, plus recommendations for reports.
     """
+    # Build cache key
+    cats_key = ",".join(sorted(categories)) if categories else "all"
+    cache_key = f"{project_id}:{scope}:{cats_key}"
+    
+    # Check cache (unless refresh requested)
+    if not refresh:
+        cache = _load_env_cache()
+        if cache_key in cache:
+            cached = cache[cache_key]
+            age = time.time() - cached.get("timestamp", 0)
+            if age < ENV_CACHE_TTL:
+                log.info(f"Returning cached environment data (age: {int(age)}s)")
+                cached_data = cached["data"].copy()
+                cached_data["_cached"] = True
+                cached_data["_cache_age_seconds"] = int(age)
+                return cached_data
     cats_to_scan = categories if categories else list(ENTITY_CATEGORIES.keys())
     results = {"project_id": project_id, "scope": scope, "categories": {}, "summary": {}, "recommendations": []}
     total_records = 0
@@ -197,6 +239,11 @@ async def discover_environment(project_id: int = 0, categories: Optional[List[st
         recs.append({"report": "Data Inventory Report", "reason": "Limited data found - can create a summary of available records and next steps"})
     
     results["recommendations"] = recs
+    
+    # Save to cache
+    _save_env_cache(cache_key, results)
+    log.info(f"Environment discovery complete, cached for future use")
+    
     return results
 
 
@@ -688,7 +735,12 @@ async def generate_report_from_template(
                     conditions.append({"path": "CreatedDateTime", "type": "LessThanOrEqualTo", "value": date_range_end})
                 
                 query_url = QUERY_URL_TEMPLATE.format(project_id=project_id)
-                qpayload = {"PropertyName": "Query", "EntityDef": ent, "Take": "100"}
+                qpayload: Dict[str, Any] = {"PropertyName": "Query", "EntityDef": ent, "Take": "100"}
+                
+                # CRITICAL: Add partition scope for domain-wide queries
+                if project_id == 0:
+                    qpayload["Partition"] = {"Scope": "Any"}
+                
                 if conditions:
                     qpayload["Condition"] = [
                         {"PropertyName": "Data", "Path": c["path"], "Type": c["type"], "Value": c.get("value", "")}
@@ -699,11 +751,18 @@ async def generate_report_from_template(
                     resp = await client.post(query_url, headers=HEADERS_JSON(), json=qpayload)
                     body = resp.json() if resp.status_code < 400 else {}
                 
+                # Extract entities - handle multiple response formats
                 entities = []
                 for key in ("entities", "results", "items"):
                     if isinstance(body.get(key), list):
                         entities = body[key]
                         break
+                # Also check nested sets structure (Kahua API format)
+                if not entities and "sets" in body:
+                    for s in body.get("sets", []):
+                        if isinstance(s.get("entities"), list):
+                            entities = s["entities"]
+                            break
                 
                 if entities:
                     fields = section.fields or list(entities[0].keys())[:6]
@@ -725,17 +784,28 @@ async def generate_report_from_template(
                 ent = resolve_entity_def(chart_spec.data_source)
                 
                 query_url = QUERY_URL_TEMPLATE.format(project_id=project_id)
-                qpayload = {"PropertyName": "Query", "EntityDef": ent, "Take": "500"}
+                qpayload: Dict[str, Any] = {"PropertyName": "Query", "EntityDef": ent, "Take": "500"}
+                
+                # CRITICAL: Add partition scope for domain-wide queries
+                if project_id == 0:
+                    qpayload["Partition"] = {"Scope": "Any"}
                 
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     resp = await client.post(query_url, headers=HEADERS_JSON(), json=qpayload)
                     body = resp.json() if resp.status_code < 400 else {}
                 
+                # Extract entities - handle multiple response formats
                 entities = []
                 for key in ("entities", "results", "items"):
                     if isinstance(body.get(key), list):
                         entities = body[key]
                         break
+                # Also check nested sets structure (Kahua API format)
+                if not entities and "sets" in body:
+                    for s in body.get("sets", []):
+                        if isinstance(s.get("entities"), list):
+                            entities = s["entities"]
+                            break
                 
                 if entities:
                     # Aggregate by group_by field
@@ -868,9 +938,10 @@ You are an expert. Act like one.
 ### find_project(search_term)
 **REQUIRED** when user mentions a project by name. Returns matching project(s) with IDs.
 
-### discover_environment(project_id=0, categories=None)
-Scan for what data exists. Use project_id from find_project, or 0 for org-wide.
-Categories: "cost", "field", "communications", "documents", "project", "risk"
+### discover_environment(project_id=0, categories=None, refresh=False)
+Scan for what data exists. **Results are cached for 24 hours** - instant on repeat calls.
+- `refresh=True` forces a fresh scan (use only if user says "refresh" or data seems stale)
+- Categories: "cost", "field", "communications", "documents", "project", "risk"
 
 ### get_entity_schema(entity_def, project_id=0)  
 Sample a record to see available fields.
@@ -976,6 +1047,42 @@ Apply domain knowledge:
 4. **Use templates when available** - for consistent, professional reports
 5. **Use conversation context** - don't re-query existing data
 6. **Provide insights** - explain what the data means
+
+## OUTPUT FORMATTING BEST PRACTICES
+
+### Make Data Scannable
+- Lead with the **key number** or insight
+- Use markdown tables for lists >3 items
+- Bold important values: **$2.4M**, **15 open**, **3 days overdue**
+- Include status indicators: ✅ Complete, ⚠️ At Risk, ❌ Blocked
+
+### Structured Responses
+For queries returning data:
+1. **Summary line** - "Found 12 RFIs across 3 projects"
+2. **Key metrics** - highlight the most important numbers
+3. **Data table** - sortable columns with status
+4. **Insight/recommendation** - what should they do next?
+
+Example format:
+```
+## RFI Status Overview
+
+Found **12 RFIs** - 8 open, 4 closed
+
+| # | Subject | Status | Days Open | Ball In Court |
+|---|---------|--------|-----------|---------------|
+| 001 | Foundation spec | ⚠️ Pending | **14** | Architect |
+| 002 | Steel grade | ✅ Closed | 3 | - |
+
+**⚡ Action needed:** RFI-001 is 14 days old with no response. Consider escalation.
+```
+
+### Status Icons
+- ✅ Complete/Approved/Closed
+- ⚠️ Warning/Pending/At Risk  
+- ❌ Rejected/Blocked/Overdue
+- 🔄 In Progress/Under Review
+- ⏱️ Waiting/On Hold
 """
 
 super_agent = Agent(

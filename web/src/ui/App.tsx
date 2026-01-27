@@ -1,7 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState, memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Copy, Check, Send, Plus, Sparkles, Loader2, RotateCcw, ThumbsUp, ThumbsDown, Building2, FileText, ChevronRight, X, Search, Tag, FolderOpen } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { 
+  Copy, Check, Send, Plus, Sparkles, Loader2, RotateCcw, ThumbsUp, ThumbsDown, 
+  Building2, FileText, ChevronRight, X, Search, Tag, FolderOpen, History,
+  Command, Keyboard, Settings, BarChart3, CheckSquare, AlertTriangle
+} from 'lucide-react'
+import { 
+  InlineChart, MetricCard, MetricsGrid, StatusBadge, ProgressBar,
+  InsightCallout, EntityCard, DataTable, Collapsible, ReportDownload,
+  ToolActivity, TypingIndicator, ShortcutHint, CHART_COLORS
+} from './components'
+import { HistorySidebar, ChatSession, saveSession, loadChatHistory, generateTitle } from './history'
+import { CommandPalette } from './CommandPalette'
 
 type ChatMessage = {
   id: string
@@ -9,6 +21,15 @@ type ChatMessage = {
   content: string
   isStreaming?: boolean
   toolsUsed?: string[]
+  timestamp?: number
+}
+
+// Tool call tracking
+type ToolCall = {
+  name: string
+  status: 'running' | 'complete' | 'error'
+  startTime: number
+  endTime?: number
 }
 
 // Template types
@@ -242,60 +263,46 @@ const Message = memo(({ message, onRegenerate }: {
             marginLeft: 44, 
             marginTop: 16, 
             display: 'flex', 
-            gap: 4 
+            flexDirection: 'column',
+            gap: 12
           }}>
-            <button className="icon-btn" title="Copy response" onClick={async () => {
-              await navigator.clipboard.writeText(message.content)
-            }}>
-              <Copy size={16} />
-            </button>
-            <button className="icon-btn" title="Good response">
-              <ThumbsUp size={16} />
-            </button>
-            <button className="icon-btn" title="Bad response">
-              <ThumbsDown size={16} />
-            </button>
-            {onRegenerate && (
-              <button className="icon-btn" title="Regenerate" onClick={onRegenerate}>
-                <RotateCcw size={16} />
-              </button>
+            {/* Tools used badges */}
+            {message.toolsUsed && message.toolsUsed.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {[...new Set(message.toolsUsed)].map((tool, i) => (
+                  <span key={i} className="tool-badge complete">
+                    <Check size={12} />
+                    {tool.replace(/_/g, ' ')}
+                  </span>
+                ))}
+              </div>
             )}
+            
+            {/* Action buttons */}
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button className="icon-btn" title="Copy response" onClick={async () => {
+                await navigator.clipboard.writeText(message.content)
+              }}>
+                <Copy size={16} />
+              </button>
+              <button className="icon-btn" title="Good response">
+                <ThumbsUp size={16} />
+              </button>
+              <button className="icon-btn" title="Bad response">
+                <ThumbsDown size={16} />
+              </button>
+              {onRegenerate && (
+                <button className="icon-btn" title="Regenerate" onClick={onRegenerate}>
+                  <RotateCcw size={16} />
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
     </div>
   )
 })
-
-// Thinking/tool indicator
-function ThinkingIndicator({ status }: { status: string }) {
-  return (
-    <div style={{
-      padding: '24px 0',
-      borderBottom: '1px solid var(--border-color)',
-    }}>
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: '0 24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 32,
-            height: 32,
-            borderRadius: 6,
-            background: 'var(--accent)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <Building2 size={18} color="white" />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Loader2 size={16} className="thinking-indicator" />
-            <span style={{ color: 'var(--text-secondary)', fontSize: 14 }}>{status}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // Category config for templates
 const CATEGORY_CONFIG: Record<string, { icon: string; color: string; label: string }> = {
@@ -560,13 +567,20 @@ function TemplateLibrary({
 // Welcome screen
 function WelcomeScreen({ onQuickAction }: { onQuickAction: (prompt: string) => void }) {
   const quickActions = [
-    { prompt: 'What projects do I have?', icon: '📁', desc: 'List all projects' },
-    { prompt: 'Show me all open RFIs', icon: '📋', desc: 'Open RFI status' },
-    { prompt: 'Generate a contracts report', icon: '📊', desc: 'Contract summary' },
-    { prompt: 'List punch list items', icon: '✅', desc: 'Punch list review' },
-    { prompt: 'What data exists in my environment?', icon: '🔍', desc: 'Data discovery' },
-    { prompt: 'Show me overdue items', icon: '⚠️', desc: 'Risk overview' },
+    { prompt: 'What projects do I have?', icon: FolderOpen, desc: 'List all projects', category: 'discovery' },
+    { prompt: 'Show me all open RFIs', icon: FileText, desc: 'Open RFI status', category: 'field' },
+    { prompt: 'Generate a contracts report', icon: BarChart3, desc: 'Contract summary', category: 'cost' },
+    { prompt: 'List punch list items', icon: CheckSquare, desc: 'Punch list review', category: 'field' },
+    { prompt: 'What data exists in my environment?', icon: Search, desc: 'Data discovery', category: 'discovery' },
+    { prompt: 'Show me overdue items', icon: AlertTriangle, desc: 'Risk overview', category: 'risk' },
   ]
+  
+  const categoryColors: Record<string, string> = {
+    discovery: '#10a37f',
+    field: '#3b82f6',
+    cost: '#22c55e',
+    risk: '#ef4444'
+  }
   
   return (
     <div style={{ 
@@ -575,84 +589,158 @@ function WelcomeScreen({ onQuickAction }: { onQuickAction: (prompt: string) => v
       alignItems: 'center', 
       justifyContent: 'center',
       height: '100%',
-      padding: 24,
+      padding: 32,
       textAlign: 'center'
     }}>
-      <div style={{
-        width: 64,
-        height: 64,
-        borderRadius: 16,
-        background: 'linear-gradient(135deg, var(--accent) 0%, #0e8a6c 100%)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 24
-      }}>
-        <Building2 size={32} color="white" />
-      </div>
-      <h1 style={{ 
-        fontSize: 28, 
-        fontWeight: 600, 
-        marginBottom: 12,
-        color: 'var(--text-primary)'
-      }}>
+      {/* Animated logo */}
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.4, ease: 'easeOut' }}
+        style={{
+          width: 80,
+          height: 80,
+          borderRadius: 20,
+          background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 28,
+          boxShadow: '0 12px 40px rgba(16, 163, 127, 0.35)'
+        }}
+      >
+        <Building2 size={40} color="white" />
+      </motion.div>
+      
+      <motion.h1
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.1, duration: 0.4 }}
+        style={{ 
+          fontSize: 36, 
+          fontWeight: 700, 
+          marginBottom: 16,
+          color: 'var(--text-primary)',
+          letterSpacing: '-0.025em'
+        }}
+      >
         Kahua Assistant
-      </h1>
-      <p style={{ 
-        color: 'var(--text-secondary)', 
-        maxWidth: 480,
-        lineHeight: 1.6,
-        marginBottom: 32
-      }}>
+      </motion.h1>
+      
+      <motion.p
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.2, duration: 0.4 }}
+        style={{ 
+          color: 'var(--text-secondary)', 
+          maxWidth: 480,
+          lineHeight: 1.6,
+          marginBottom: 48,
+          fontSize: 17
+        }}
+      >
         Your AI-powered construction project analyst. Query projects, RFIs, submittals, 
-        contracts, and generate professional reports.
-      </p>
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(2, 1fr)', 
-        gap: 12,
-        maxWidth: 560,
-        width: '100%'
-      }}>
-        {quickActions.map((action, i) => (
-          <button
-            key={i}
-            className="data-card"
-            onClick={() => onQuickAction(action.prompt)}
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 12,
-              textAlign: 'left',
-              cursor: 'pointer',
-              border: '1px solid var(--border-color)',
-              fontSize: 14,
-              color: 'var(--text-secondary)',
-              lineHeight: 1.4,
-              padding: '14px 16px',
-              transition: 'all 0.15s ease'
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.borderColor = 'var(--accent)'
-              e.currentTarget.style.background = 'var(--bg-tertiary)'
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.borderColor = 'var(--border-color)'
-              e.currentTarget.style.background = ''
-            }}
-          >
-            <span style={{ fontSize: 20 }}>{action.icon}</span>
-            <div>
-              <div style={{ fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2 }}>
-                {action.desc}
+        contracts, and generate professional reports—all through conversation.
+      </motion.p>
+      
+      {/* Quick Actions Grid */}
+      <motion.div
+        initial={{ y: 30, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.3, duration: 0.4 }}
+        style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(2, 1fr)', 
+          gap: 16,
+          maxWidth: 640,
+          width: '100%'
+        }}
+      >
+        {quickActions.map((action, i) => {
+          const IconComponent = action.icon
+          return (
+            <motion.button
+              key={i}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => onQuickAction(action.prompt)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 16,
+                textAlign: 'left',
+                cursor: 'pointer',
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 16,
+                fontSize: 14,
+                color: 'var(--text-secondary)',
+                lineHeight: 1.5,
+                padding: '20px',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = categoryColors[action.category]
+                e.currentTarget.style.background = 'var(--bg-tertiary)'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = 'var(--border-color)'
+                e.currentTarget.style.background = 'var(--bg-secondary)'
+              }}
+            >
+              <div style={{ 
+                width: 48,
+                height: 48,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: categoryColors[action.category],
+                borderRadius: 12,
+                flexShrink: 0
+              }}>
+                <IconComponent size={24} color="white" />
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                "{action.prompt}"
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ 
+                  fontWeight: 600, 
+                  color: 'var(--text-primary)', 
+                  marginBottom: 4,
+                  fontSize: 15
+                }}>
+                  {action.desc}
+                </div>
+                <div style={{ 
+                  fontSize: 13, 
+                  color: 'var(--text-muted)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}>
+                  {action.prompt}
+                </div>
               </div>
-            </div>
-          </button>
-        ))}
-      </div>
+            </motion.button>
+          )
+        })}
+      </motion.div>
+      
+      {/* Footer hint */}
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5, duration: 0.4 }}
+        style={{ 
+          marginTop: 40, 
+          fontSize: 13, 
+          color: 'var(--text-muted)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}
+      >
+        <Keyboard size={14} />
+        Type a question or click a quick action to begin
+      </motion.p>
     </div>
   )
 }
@@ -665,11 +753,43 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [thinkingStatus, setThinkingStatus] = useState<string | null>(null)
   const [showTemplates, setShowTemplates] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [showCommandPalette, setShowCommandPalette] = useState(false)
+  const [activeTools, setActiveTools] = useState<ToolCall[]>([])
+  const [chatHistory, setChatHistory] = useState<ChatSession[]>([])
   
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   
+  // Load chat history on mount
+  useEffect(() => {
+    setChatHistory(loadChatHistory())
+  }, [])
+  
   useEffect(() => { setStoredSessionId(sessionId) }, [sessionId])
+  
+  // Save session to history when messages change
+  useEffect(() => {
+    if (messages.length > 0 && !busy) {
+      const title = generateTitle(messages)
+      const existing = chatHistory.find(s => s.id === sessionId)
+      saveSession({
+        id: sessionId,
+        title,
+        preview: messages[messages.length - 1]?.content.slice(0, 100) || '',
+        messages: messages.map(m => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp || Date.now()
+        })),
+        createdAt: existing?.createdAt || Date.now(),
+        updatedAt: Date.now(),
+        starred: existing?.starred || false
+      })
+      setChatHistory(loadChatHistory())
+    }
+  }, [messages, sessionId, busy, chatHistory])
   
   // Auto-resize textarea
   useEffect(() => {
@@ -691,19 +811,64 @@ export default function App() {
     const next = generateSessionId()
     setSessionId(next)
     setMessages([])
+    setActiveTools([])
   }, [])
+  
+  // Load a session from history
+  const loadSession = useCallback((session: ChatSession) => {
+    setSessionId(session.id)
+    // Convert history messages to ChatMessage format
+    setMessages(session.messages.map(m => ({
+      ...m,
+      isStreaming: false,
+      toolsUsed: undefined
+    })))
+    setShowHistory(false)
+    setActiveTools([])
+  }, [])
+  
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+K to open command palette
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setShowCommandPalette(prev => !prev)
+      }
+      // Ctrl+N for new chat
+      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault()
+        newSession()
+      }
+      // Ctrl+H for history
+      if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+        e.preventDefault()
+        setShowHistory(prev => !prev)
+      }
+      // Escape to close sidebars
+      if (e.key === 'Escape') {
+        if (showCommandPalette) setShowCommandPalette(false)
+        else if (showHistory) setShowHistory(false)
+        else if (showTemplates) setShowTemplates(false)
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [newSession, showHistory, showTemplates, showCommandPalette])
   
   // Core send function - accepts optional prompt for quick actions
   const sendMessage = useCallback(async (messageText: string) => {
     if (!messageText.trim() || busy) return
     
-    const userMsg: ChatMessage = { id: genId(), role: 'user', content: messageText.trim() }
-    const assistantMsg: ChatMessage = { id: genId(), role: 'assistant', content: '', isStreaming: true }
+    const userMsg: ChatMessage = { id: genId(), role: 'user', content: messageText.trim(), timestamp: Date.now() }
+    const assistantMsg: ChatMessage = { id: genId(), role: 'assistant', content: '', isStreaming: true, timestamp: Date.now() }
     
     setMessages(prev => [...prev, userMsg, assistantMsg])
     setInput('')
     setBusy(true)
     setThinkingStatus('Thinking...')
+    setActiveTools([])
     scrollToBottom()
     
     try {
@@ -720,6 +885,7 @@ export default function App() {
       const reader = resp.body.getReader()
       const decoder = new TextDecoder()
       let buf = ''
+      let toolsUsed: string[] = []
       
       while (true) {
         const { value, done } = await reader.read()
@@ -749,7 +915,26 @@ export default function App() {
             })
             scrollToBottom()
           } else if (evt.type === 'item' && evt.item_type === 'tool_call_item') {
-            setThinkingStatus('Querying Kahua...')
+            // Track tool calls with actual tool name from server
+            const toolName = evt.tool_name || 'query'
+            const displayName = toolName.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+            setThinkingStatus(`Using ${displayName}...`)
+            toolsUsed.push(toolName)
+            setActiveTools(prev => [...prev, { 
+              name: toolName, 
+              status: 'running', 
+              startTime: Date.now() 
+            }])
+          } else if (evt.type === 'item' && evt.item_type === 'tool_call_output_item') {
+            // Mark tool as complete when we get output
+            setActiveTools(prev => prev.map(t => 
+              t.status === 'running' ? { ...t, status: 'complete', endTime: Date.now() } : t
+            ))
+          } else if (evt.type === 'tool_output') {
+            // Mark tool as complete
+            setActiveTools(prev => prev.map(t => 
+              t.status === 'running' ? { ...t, status: 'complete', endTime: Date.now() } : t
+            ))
           } else if (evt.type === 'error') {
             setMessages(prev => {
               const copy = [...prev]
@@ -764,7 +949,7 @@ export default function App() {
               const copy = [...prev]
               const last = copy[copy.length - 1]
               if (last?.role === 'assistant') {
-                copy[copy.length - 1] = { ...last, isStreaming: false }
+                copy[copy.length - 1] = { ...last, isStreaming: false, toolsUsed }
               }
               return copy
             })
@@ -783,6 +968,7 @@ export default function App() {
     } finally {
       setBusy(false)
       setThinkingStatus(null)
+      setActiveTools(prev => prev.map(t => ({ ...t, status: 'complete' as const, endTime: t.endTime || Date.now() })))
       setMessages(prev => {
         const copy = [...prev]
         const last = copy[copy.length - 1]
@@ -821,131 +1007,250 @@ export default function App() {
   
   return (
     <div style={{ 
-      display: 'grid', 
-      gridTemplateRows: 'auto 1fr auto', 
+      display: 'flex',
       height: '100vh',
       background: 'var(--bg-primary)'
     }}>
-      {/* Template Library Sidebar */}
-      <TemplateLibrary 
-        isOpen={showTemplates} 
-        onClose={() => setShowTemplates(false)}
-        onSelectTemplate={handleTemplateSelect}
+      {/* Command Palette */}
+      <CommandPalette
+        isOpen={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        onQuickAction={(prompt) => { setShowCommandPalette(false); sendMessage(prompt); }}
+        onNewChat={() => { setShowCommandPalette(false); newSession(); }}
+        onShowHistory={() => { setShowCommandPalette(false); setShowHistory(true); }}
+        onShowTemplates={() => { setShowCommandPalette(false); setShowTemplates(true); }}
       />
       
-      {/* Header */}
-      <header style={{ 
-        padding: '14px 24px',
-        borderBottom: '1px solid #333',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        background: '#1a1a1a'
+      {/* History Sidebar */}
+      <HistorySidebar
+        isOpen={showHistory}
+        onClose={() => setShowHistory(false)}
+        sessions={chatHistory}
+        currentSessionId={sessionId}
+        onSelectSession={loadSession}
+        onNewChat={newSession}
+        onDeleteSession={(id) => {
+          // Import deleteSession in the history file and use it here
+          const history = loadChatHistory().filter(s => s.id !== id)
+          try {
+            localStorage.setItem('kahua.history', JSON.stringify(history))
+          } catch {}
+          setChatHistory(history)
+        }}
+      />
+      
+      <div style={{
+        flex: 1,
+        display: 'grid',
+        gridTemplateRows: 'auto 1fr auto',
+        height: '100vh',
+        minWidth: 0
       }}>
-        <div style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          background: 'var(--accent)',
+        {/* Template Library Sidebar */}
+        <TemplateLibrary 
+          isOpen={showTemplates} 
+          onClose={() => setShowTemplates(false)}
+          onSelectTemplate={handleTemplateSelect}
+        />
+        
+        {/* Header */}
+        <header style={{ 
+          padding: '14px 24px',
+          borderBottom: '1px solid #333',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center'
+          gap: 12,
+          background: '#1a1a1a'
         }}>
-          <Building2 size={18} color="white" />
-        </div>
-        <span style={{ fontWeight: 600, fontSize: 15 }}>Kahua Assistant</span>
-        
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
           <button 
-            className="btn-secondary" 
-            onClick={() => setShowTemplates(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <FileText size={14} />
-            Templates
-          </button>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            Session: {sessionId.slice(0, 12)}...
-          </span>
-          <button className="btn-secondary" onClick={newSession}>
-            <Plus size={14} style={{ marginRight: 6 }} />
-            New Chat
-          </button>
-        </div>
-      </header>
-      
-      {/* Messages */}
-      <div 
-        ref={scrollRef} 
-        style={{ 
-          overflow: 'auto',
-          background: 'var(--bg-primary)'
-        }}
-      >
-        {messages.length === 0 ? (
-          <WelcomeScreen onQuickAction={handleQuickAction} />
-        ) : (
-          <>
-            {messages.filter(m => !m.isStreaming || m.content).map(msg => (
-              <Message key={msg.id} message={msg} />
-            ))}
-            {thinkingStatus && <ThinkingIndicator status={thinkingStatus} />}
-          </>
-        )}
-      </div>
-      
-      {/* Input */}
-      <footer style={{ 
-        padding: '16px 24px 24px',
-        background: 'var(--bg-primary)',
-        borderTop: '1px solid #222'
-      }}>
-        <div style={{ 
-          maxWidth: 800, 
-          margin: '0 auto',
-          position: 'relative'
-        }}>
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask about your projects, RFIs, contracts..."
-            rows={1}
-            className="chat-input"
-            style={{ paddingRight: 52 }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || busy}
-            style={{
-              position: 'absolute',
-              right: 8,
-              bottom: 8,
-              background: input.trim() && !busy ? 'var(--accent)' : 'var(--bg-tertiary)',
-              border: 'none',
-              borderRadius: 8,
-              padding: 8,
-              cursor: input.trim() && !busy ? 'pointer' : 'not-allowed',
-              transition: 'all 0.15s ease'
+            onClick={() => setShowHistory(!showHistory)}
+            className="icon-btn"
+            title="Chat History"
+            style={{ 
+              background: showHistory ? 'var(--accent)' : undefined,
+              color: showHistory ? 'white' : undefined
             }}
           >
-            {busy ? (
-              <Loader2 size={18} color="var(--text-muted)" className="thinking-indicator" />
-            ) : (
-              <Send size={18} color={input.trim() ? 'white' : 'var(--text-muted)'} />
-            )}
+            <History size={18} />
           </button>
+          
+          <div style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            background: 'var(--accent)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <Building2 size={18} color="white" />
+          </div>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>Kahua Assistant</span>
+          
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* Command Palette Trigger */}
+            <button 
+              className="btn-secondary" 
+              onClick={() => setShowCommandPalette(true)}
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 8,
+                minWidth: 160,
+                justifyContent: 'space-between'
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Search size={14} />
+                Search...
+              </span>
+              <span style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 2, 
+                fontSize: 11, 
+                color: 'var(--text-muted)',
+                background: 'var(--bg-primary)',
+                padding: '2px 6px',
+                borderRadius: 4
+              }}>
+                <Command size={10} />K
+              </span>
+            </button>
+            
+            <button 
+              className="btn-secondary" 
+              onClick={() => setShowTemplates(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <FileText size={14} />
+              Templates
+            </button>
+            <button className="btn-secondary" onClick={newSession}>
+              <Plus size={14} style={{ marginRight: 6 }} />
+              New Chat
+            </button>
+          </div>
+        </header>
+        
+        {/* Messages */}
+        <div 
+          ref={scrollRef} 
+          style={{ 
+            overflow: 'auto',
+            background: 'var(--bg-primary)'
+          }}
+        >
+          {messages.length === 0 ? (
+            <WelcomeScreen onQuickAction={handleQuickAction} />
+          ) : (
+            <>
+              {messages.filter(m => !m.isStreaming || m.content).map(msg => (
+                <Message key={msg.id} message={msg} />
+              ))}
+              {thinkingStatus && (
+                <div style={{
+                  padding: '24px 0',
+                  borderBottom: '1px solid var(--border-color)',
+                }}>
+                  <div style={{ maxWidth: 800, margin: '0 auto', padding: '0 24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 6,
+                        background: 'var(--accent)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <Building2 size={18} color="white" />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <TypingIndicator />
+                        {activeTools.length > 0 && (
+                          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {activeTools.map((tool, i) => (
+                              <ToolActivity 
+                                key={i} 
+                                tool={tool.name} 
+                                status={tool.status}
+                                duration={tool.endTime ? tool.endTime - tool.startTime : undefined}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
-        <p style={{ 
-          textAlign: 'center', 
-          fontSize: 12, 
-          color: 'var(--text-muted)',
-          marginTop: 12
+        
+        {/* Input */}
+        <footer style={{ 
+          padding: '16px 24px 24px',
+          background: 'var(--bg-primary)',
+          borderTop: '1px solid #222'
         }}>
-          Press Enter to send • Shift+Enter for new line
-        </p>
-      </footer>
+          <div style={{ 
+            maxWidth: 800, 
+            margin: '0 auto',
+            position: 'relative'
+          }}>
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask about your projects, RFIs, contracts..."
+              rows={1}
+              className="chat-input"
+              style={{ paddingRight: 52 }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || busy}
+              style={{
+                position: 'absolute',
+                right: 8,
+                bottom: 8,
+                background: input.trim() && !busy ? 'var(--accent)' : 'var(--bg-tertiary)',
+                border: 'none',
+                borderRadius: 8,
+                padding: 8,
+                cursor: input.trim() && !busy ? 'pointer' : 'not-allowed',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {busy ? (
+                <Loader2 size={18} color="var(--text-muted)" className="thinking-indicator" />
+              ) : (
+                <Send size={18} color={input.trim() ? 'white' : 'var(--text-muted)'} />
+              )}
+            </button>
+          </div>
+          <div style={{ 
+            textAlign: 'center', 
+            fontSize: 12, 
+            color: 'var(--text-muted)',
+            marginTop: 12,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 16
+          }}>
+            <span>Enter to send • Shift+Enter for new line</span>
+            <span style={{ opacity: 0.5 }}>|</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <ShortcutHint keys={['Ctrl', 'N']} action="New" />
+              <ShortcutHint keys={['Ctrl', 'H']} action="History" />
+            </span>
+          </div>
+        </footer>
+      </div>
     </div>
   )
 }
