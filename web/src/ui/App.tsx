@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Copy, Check, Send, Plus, Sparkles, Loader2, RotateCcw, ThumbsUp, ThumbsDown, 
   Building2, FileText, ChevronRight, X, Search, Tag, FolderOpen, History,
-  Command, Keyboard, Settings, BarChart3, CheckSquare, AlertTriangle
+  Command, Keyboard, Settings, BarChart3, CheckSquare, AlertTriangle, Paperclip, Image,
+  Brush
 } from 'lucide-react'
 import { 
   InlineChart, MetricCard, MetricsGrid, StatusBadge, ProgressBar,
@@ -14,6 +15,7 @@ import {
 } from './components'
 import { HistorySidebar, ChatSession, saveSession, loadChatHistory, generateTitle } from './history'
 import { CommandPalette } from './CommandPalette'
+import { DocumentEditor } from './DocumentEditor'
 
 type ChatMessage = {
   id: string
@@ -755,11 +757,39 @@ export default function App() {
   const [showTemplates, setShowTemplates] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showCommandPalette, setShowCommandPalette] = useState(false)
+  const [showBuilder, setShowBuilder] = useState(false)
   const [activeTools, setActiveTools] = useState<ToolCall[]>([])
   const [chatHistory, setChatHistory] = useState<ChatSession[]>([])
   
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{name: string, path: string, type: string}>>([])
+  
+  // Handle file upload
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    
+    for (const file of Array.from(files)) {
+      const formData = new FormData()
+      formData.append('file', file)
+      
+      try {
+        const resp = await fetch('/upload', { method: 'POST', body: formData })
+        const data = await resp.json()
+        if (data.status === 'ok') {
+          setUploadedFiles(prev => [...prev, { name: data.filename, path: data.path, type: data.type }])
+          // Add a note to the input about the uploaded file
+          setInput(prev => prev + (prev ? '\n' : '') + `[Uploaded: ${data.filename}]`)
+        }
+      } catch (err) {
+        console.error('Upload failed:', err)
+      }
+    }
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
   
   // Load chat history on mount
   useEffect(() => {
@@ -1126,6 +1156,21 @@ export default function App() {
               <FileText size={14} />
               Templates
             </button>
+            <button 
+              className="btn-secondary" 
+              onClick={() => setShowBuilder(true)}
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 6,
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                border: 'none',
+                color: 'white'
+              }}
+            >
+              <Brush size={14} />
+              Design Builder
+            </button>
             <button className="btn-secondary" onClick={newSession}>
               <Plus size={14} style={{ marginRight: 6 }} />
               New Chat
@@ -1173,7 +1218,7 @@ export default function App() {
                             {activeTools.map((tool, i) => (
                               <ToolActivity 
                                 key={i} 
-                                tool={tool.name} 
+                                toolName={tool.name} 
                                 status={tool.status}
                                 duration={tool.endTime ? tool.endTime - tool.startTime : undefined}
                               />
@@ -1200,6 +1245,38 @@ export default function App() {
             margin: '0 auto',
             position: 'relative'
           }}>
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,.pdf,.docx,.doc,.xlsx,.xls"
+              onChange={handleFileUpload}
+              style={{ display: 'none' }}
+            />
+            
+            {/* Upload button */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              title="Upload file (image, PDF, Word doc)"
+              style={{
+                position: 'absolute',
+                left: 8,
+                bottom: 8,
+                background: 'transparent',
+                border: 'none',
+                borderRadius: 8,
+                padding: 8,
+                cursor: 'pointer',
+                opacity: 0.6,
+                transition: 'opacity 0.15s ease'
+              }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}
+            >
+              <Paperclip size={18} color="var(--text-secondary)" />
+            </button>
+            
             <textarea
               ref={inputRef}
               value={input}
@@ -1208,7 +1285,7 @@ export default function App() {
               placeholder="Ask about your projects, RFIs, contracts..."
               rows={1}
               className="chat-input"
-              style={{ paddingRight: 52 }}
+              style={{ paddingRight: 52, paddingLeft: 44 }}
             />
             <button
               onClick={handleSend}
@@ -1232,6 +1309,40 @@ export default function App() {
               )}
             </button>
           </div>
+          
+          {/* Uploaded files indicator */}
+          {uploadedFiles.length > 0 && (
+            <div style={{
+              maxWidth: 800,
+              margin: '8px auto 0',
+              display: 'flex',
+              gap: 8,
+              flexWrap: 'wrap'
+            }}>
+              {uploadedFiles.map((file, i) => (
+                <span key={i} style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '4px 8px',
+                  background: 'var(--bg-tertiary)',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  color: 'var(--text-secondary)'
+                }}>
+                  {file.type === 'image' ? <Image size={12} /> : <FileText size={12} />}
+                  {file.name}
+                  <button
+                    onClick={() => setUploadedFiles(prev => prev.filter((_, idx) => idx !== i))}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginLeft: 4 }}
+                  >
+                    <X size={12} color="var(--text-muted)" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          
           <div style={{ 
             textAlign: 'center', 
             fontSize: 12, 
@@ -1245,12 +1356,32 @@ export default function App() {
             <span>Enter to send • Shift+Enter for new line</span>
             <span style={{ opacity: 0.5 }}>|</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <ShortcutHint keys={['Ctrl', 'N']} action="New" />
-              <ShortcutHint keys={['Ctrl', 'H']} action="History" />
+              <ShortcutHint keys={['Ctrl', 'N']} label="New" />
+              <ShortcutHint keys={['Ctrl', 'H']} label="History" />
             </span>
           </div>
         </footer>
       </div>
+      
+      {/* Template Builder Full-Screen Modal */}
+      <AnimatePresence>
+        {showBuilder && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 200,
+              background: 'var(--bg-primary)'
+            }}
+          >
+            <DocumentEditor onClose={() => setShowBuilder(false)} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

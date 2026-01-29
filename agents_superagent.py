@@ -1,19 +1,14 @@
-import os, json, logging, asyncio, time
+import os, json, logging, asyncio
 from pathlib import Path
 from typing import Optional, List, Any, Dict
 import httpx
 from pydantic import BaseModel, Field, ValidationError
-from openai import AsyncAzureOpenAI
-
-# Environment cache file
-ENV_CACHE_FILE = Path(__file__).parent / ".env_cache.json"
-ENV_CACHE_TTL = 3600 * 4  # 4 hours - reduced to limit stale data impact
 
 # Report generation
 from report_generator import create_report, ReportGenerator, ReportConfig, ChartSpec
 
 try:
-    from agents import Agent, Runner, OpenAIChatCompletionsModel, function_tool, SQLiteSession
+    from agents import Agent, Runner, function_tool, SQLiteSession
 except Exception as e:
     raise RuntimeError("The 'agents' package must be importable for this script to run.") from e
 
@@ -21,13 +16,27 @@ except Exception as e:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("kahua_superagent")
 
-# Azure OpenAI client
-azure_client = AsyncAzureOpenAI(
-    api_key=os.environ["AZURE_KEY"],
-    azure_endpoint=os.environ["AZURE_ENDPOINT"],
-    api_version=os.environ["API_VERSION"],
-)
-MODEL_DEPLOYMENT = os.environ["AZURE_DEPLOYMENT"]
+# Model configuration - supports both OpenAI and Anthropic on Azure
+MODEL_DEPLOYMENT = os.environ.get("AZURE_DEPLOYMENT", "gpt-4o")
+MODEL_PROVIDER = os.environ.get("MODEL_PROVIDER", "anthropic").lower()  # "openai" or "anthropic"
+
+if MODEL_PROVIDER == "anthropic":
+    # Use Anthropic Claude via Azure
+    from anthropic_model_adapter import AnthropicChatCompletionsModel, create_azure_anthropic_client
+    anthropic_client = create_azure_anthropic_client()
+    model_instance = AnthropicChatCompletionsModel(model=MODEL_DEPLOYMENT, anthropic_client=anthropic_client)
+    log.info(f"Using Anthropic model: {MODEL_DEPLOYMENT}")
+else:
+    # Use OpenAI via Azure
+    from openai import AsyncAzureOpenAI
+    from agents import OpenAIChatCompletionsModel
+    azure_client = AsyncAzureOpenAI(
+        api_key=os.environ["AZURE_KEY"],
+        azure_endpoint=os.environ["AZURE_ENDPOINT"],
+        api_version=os.environ["API_VERSION"],
+    )
+    model_instance = OpenAIChatCompletionsModel(model=MODEL_DEPLOYMENT, openai_client=azure_client)
+    log.info(f"Using OpenAI model: {MODEL_DEPLOYMENT}")
 
 # Kahua constants and auth helpers
 # ACTIVITY_URL = "https://devweeklyservice.kahua.com/v2/domains/AWrightCo/projects/{project_id}/apps/kahua_AEC_RFI/activities/run"
@@ -143,148 +152,108 @@ ENTITY_CATEGORIES = {
     ],
 }
 
-# Tools: Discovery / Query / Report Generation
-
-def _load_env_cache() -> Dict[str, Any]:
-    """Load cached environment discovery results."""
-    if ENV_CACHE_FILE.exists():
-        try:
-            data = json.loads(ENV_CACHE_FILE.read_text())
-            return data
-        except Exception:
-            pass
-    return {}
-
-def _save_env_cache(cache_key: str, results: Dict[str, Any]) -> None:
-    """Save environment discovery results to cache."""
-    cache = _load_env_cache()
-    cache[cache_key] = {
-        "timestamp": time.time(),
-        "data": results
-    }
-    ENV_CACHE_FILE.write_text(json.dumps(cache, indent=2))
+# Tools: Query / Report Generation
 
 @function_tool
-async def discover_environment(project_id: int = 0, categories: Optional[List[str]] = None, scope: Optional[str] = "Any", refresh: bool = False) -> dict:
+async def count_entities(entity_def: str, project_id: int = 0, scope: Optional[str] = "Any") -> dict:
     """
-    Discover what data exists in the Kahua environment. Returns entity counts by category.
-    Results are CACHED for 24 hours to avoid slow repeated scans.
+    FAST count of a single entity type. Use this for simple "how many X?" questions.
     
-    ALWAYS call this first when the user asks broad questions like:
-    - "What do I have?"
-    - "Show me my data"
-    - "What entities have records?"
-    - "What can you report on?"
+    - "How many projects do I have?" -> count_entities("project")
+    - "How many RFIs?" -> count_entities("rfi")
+    - "How many contracts?" -> count_entities("contract")
     
     Args:
-        project_id: Project to scan. Use 0 with scope="Any" for organization-wide (default).
-        categories: Optional filter. Options: "cost", "field", "communications", "documents", "project", "risk".
-                    If not specified, scans all categories.
-        scope: Query scope. "Any" queries across ALL projects (default). "DomainPartition" for specific project only.
-        refresh: If True, bypass cache and force a fresh scan. Default False (use cache).
+        entity_def: Entity type - alias ("project", "rfi", "contract") or full name.
+        project_id: Project context. Use 0 for domain-wide (default).
+        scope: "Any" for all records across projects (default), "DomainPartition" for specific project.
     
     Returns:
-        Dict with entity counts organized by category, plus recommendations for reports.
+        Dict with count and entity info.
     """
-    # Build cache key
-    cats_key = ",".join(sorted(categories)) if categories else "all"
-    cache_key = f"{project_id}:{scope}:{cats_key}"
-    
-    # Check cache (unless refresh requested)
-    if not refresh:
-        cache = _load_env_cache()
-        if cache_key in cache:
-            cached = cache[cache_key]
-            age = time.time() - cached.get("timestamp", 0)
-            if age < ENV_CACHE_TTL:
-                log.info(f"Returning cached environment data (age: {int(age)}s)")
-                cached_data = cached["data"].copy()
-                cached_data["_cached"] = True
-                cached_data["_cache_age_seconds"] = int(age)
-                return cached_data
-    cats_to_scan = categories if categories else list(ENTITY_CATEGORIES.keys())
-    results = {"project_id": project_id, "scope": scope, "categories": {}, "summary": {}, "recommendations": []}
-    total_records = 0
-    entities_with_data = []
+    ent = resolve_entity_def(entity_def)
+    query_url = QUERY_URL_TEMPLATE.format(project_id=project_id)
+    qpayload: Dict[str, Any] = {
+        "PropertyName": "Query",
+        "EntityDef": ent,
+        "Take": "1"  # Only need count, not data
+    }
+    if scope:
+        qpayload["Partition"] = {"Scope": scope}
     
     async with httpx.AsyncClient(timeout=15.0) as client:
-        for cat in cats_to_scan:
-            if cat not in ENTITY_CATEGORIES:
-                continue
-            results["categories"][cat] = {}
-            for entity_def in ENTITY_CATEGORIES[cat]:
-                query_url = QUERY_URL_TEMPLATE.format(project_id=project_id)
-                # Proper Kahua query format with Partition scope
-                qpayload: Dict[str, Any] = {
-                    "PropertyName": "Query", 
-                    "EntityDef": entity_def
-                }
-                # Add partition scope for cross-project queries
-                if scope:
-                    qpayload["Partition"] = {"Scope": scope}
-                try:
-                    resp = await client.post(query_url, headers=HEADERS_JSON(), json=qpayload)
-                    if resp.status_code < 400:
-                        body = resp.json()
-                        # Get count from response (v2 format has "count" field)
-                        count = body.get("count", 0)
-                        if count == 0 and isinstance(body, dict):
-                            for key in ("entities", "results", "items"):
-                                if isinstance(body.get(key), list):
-                                    count = len(body[key])
-                                    break
-                            # Also check nested sets
-                            for s in body.get("sets", []):
-                                if isinstance(s.get("entities"), list):
-                                    count = max(count, len(s["entities"]))
-                        results["categories"][cat][entity_def] = count
-                        total_records += count
-                        if count > 0:
-                            entities_with_data.append({"entity": entity_def, "count": count, "category": cat})
-                except Exception as e:
-                    results["categories"][cat][entity_def] = f"error: {str(e)}"
+        resp = await client.post(query_url, headers=HEADERS_JSON(), json=qpayload)
+        if resp.status_code >= 400:
+            return {"status": "error", "message": f"Failed to query {ent}", "code": resp.status_code}
+        body = resp.json()
     
-    # Build summary
-    results["summary"] = {
-        "total_records": total_records,
-        "entities_with_data": len(entities_with_data),
-        "top_entities": sorted(entities_with_data, key=lambda x: x["count"], reverse=True)[:10]
+    count = body.get("count", 0)
+    if count == 0 and isinstance(body, dict):
+        for key in ("entities", "results", "items"):
+            if isinstance(body.get(key), list):
+                # If we got a list, the count header might have the real total
+                count = body.get("count", len(body[key]))
+                break
+        for s in body.get("sets", []):
+            if isinstance(s.get("entities"), list):
+                count = max(count, body.get("count", len(s["entities"])))
+    
+    return {
+        "status": "ok",
+        "entity_def": ent,
+        "count": count,
+        "project_id": project_id,
+        "scope": scope
+    }
+
+
+@function_tool
+async def list_available_apps() -> dict:
+    """
+    Instantly list what Kahua apps/entities the agent can work with. NO API CALLS - immediate response.
+    
+    Use this when the user asks:
+    - "What can you do?" / "What can you report on?"
+    - "What apps do you support?"
+    - "What data can you access?"
+    
+    Returns categories and entity types the agent knows how to query.
+    To get actual counts, use count_entities() for specific types.
+    """
+    # Build a user-friendly summary from ENTITY_CATEGORIES
+    apps = {
+        "cost": {
+            "description": "Financial & cost management",
+            "entities": ["Contracts", "Contract Items", "Change Orders", "Invoices", "Purchase Orders", "Budgets", "Client Contracts"]
+        },
+        "field": {
+            "description": "Field operations & coordination", 
+            "entities": ["RFIs", "Submittals", "Submittal Packages", "Punch Lists", "Field Observations", "Daily Reports"]
+        },
+        "communications": {
+            "description": "Project communications",
+            "entities": ["Messages", "Transmittals", "Memos", "Letters", "Meetings", "Action Items"]
+        },
+        "documents": {
+            "description": "Document management",
+            "entities": ["Files", "Drawing Logs", "Design Review Sets", "Design Review Comments"]
+        },
+        "project": {
+            "description": "Project & directory info",
+            "entities": ["Projects", "Locations", "Companies", "Contacts"]
+        },
+        "risk": {
+            "description": "Risk & compliance",
+            "entities": ["Issues", "Risk Register", "Compliance Tracking"]
+        }
     }
     
-    # RELIABILITY FIX: Auto-retry if discovery returned 0 total records (likely scope issue)
-    if total_records == 0 and not refresh:
-        log.warning("Discovery returned 0 total records, retrying with fresh scan")
-        return await discover_environment(project_id, categories, scope, refresh=True)
-    
-    # Generate smart recommendations based on what data exists
-    recs = []
-    top_ents = {e["entity"] for e in results["summary"]["top_entities"]}
-    
-    if any("RFI" in e for e in top_ents):
-        recs.append({"report": "RFI Status Report", "reason": "RFI data found - can analyze response times, open/closed status, by discipline"})
-    if any("PunchList" in e for e in top_ents):
-        recs.append({"report": "Punch List Report", "reason": "Punch list data found - can show closure rates, by location/trade, priority breakdown"})
-    if any("Contract" in e for e in top_ents):
-        recs.append({"report": "Cost & Contracts Report", "reason": "Contract data found - can analyze commitments, change orders, billing status"})
-    if any("Invoice" in e for e in top_ents):
-        recs.append({"report": "Financial Summary Report", "reason": "Invoice data found - can show billing progress, cashflow, payment status"})
-    if any("Submittal" in e for e in top_ents):
-        recs.append({"report": "Submittal Log Report", "reason": "Submittal data found - can track approvals, review cycles, outstanding items"})
-    if any("DailyReport" in e for e in top_ents):
-        recs.append({"report": "Progress Report", "reason": "Daily reports found - can summarize work completed, manpower, weather impacts"})
-    if any("FieldObservation" in e for e in top_ents):
-        recs.append({"report": "Field Issues Report", "reason": "Field observations found - can document issues, photos, corrective actions"})
-    
-    if not recs:
-        recs.append({"report": "Data Inventory Report", "reason": "Limited data found - can create a summary of available records and next steps"})
-    
-    results["recommendations"] = recs
-    
-    # Save to cache
-    _save_env_cache(cache_key, results)
-    log.info(f"Environment discovery complete, cached for future use")
-    
-    return results
+    return {
+        "status": "ok",
+        "message": "Here's what I can access. Ask about specific items to get counts or data.",
+        "categories": apps,
+        "tip": "Try: 'How many RFIs do I have?' or 'Show me open punch list items'"
+    }
 
 
 @function_tool
@@ -357,7 +326,7 @@ async def get_entity_schema(entity_def: str, project_id: int = 0) -> dict:
     Use this to understand what fields/attributes are available before building a report.
     
     Args:
-        entity_def: The entity type to inspect (e.g., "kahua_AEC_RFI.RFI" or alias like "rfi")
+        entity_def: The entity type to inspect (e.g., "kahua_Contract.Contract" or alias like "rfi")
         project_id: Project context. Use 0 for root (default).
     
     Returns:
@@ -365,29 +334,42 @@ async def get_entity_schema(entity_def: str, project_id: int = 0) -> dict:
     """
     ent = resolve_entity_def(entity_def)
     query_url = QUERY_URL_TEMPLATE.format(project_id=project_id)
-    qpayload = {"PropertyName": "Query", "EntityDef": ent}
     
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(query_url, headers=HEADERS_JSON(), json=qpayload)
-        if resp.status_code >= 400:
-            return {"status": "error", "message": f"Failed to query {ent}"}
-        body = resp.json()
-    
-    # Extract a sample entity
-    sample = None
-    if isinstance(body, dict):
-        for key in ("entities", "results", "items"):
-            if isinstance(body.get(key), list) and body[key]:
-                sample = body[key][0]
-                break
-        if not sample:
-            for s in body.get("sets", []):
-                if isinstance(s.get("entities"), list) and s["entities"]:
-                    sample = s["entities"][0]
+    async def try_query(scope: str = None) -> tuple:
+        """Execute query with optional scope, return (body, sample)."""
+        qpayload = {"PropertyName": "Query", "EntityDef": ent, "Take": "1"}
+        if scope:
+            qpayload["Partition"] = {"Scope": scope}
+        
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(query_url, headers=HEADERS_JSON(), json=qpayload)
+            if resp.status_code >= 400:
+                return None, None
+            body = resp.json()
+        
+        # Extract a sample entity
+        sample = None
+        if isinstance(body, dict):
+            for key in ("entities", "results", "items"):
+                if isinstance(body.get(key), list) and body[key]:
+                    sample = body[key][0]
                     break
+            if not sample:
+                for s in body.get("sets", []):
+                    if isinstance(s.get("entities"), list) and s["entities"]:
+                        sample = s["entities"][0]
+                        break
+        return body, sample
+    
+    # Default to scope="Any" when querying from root (project_id=0) to search all partitions
+    default_scope = "Any" if project_id == 0 else None
+    body, sample = await try_query(scope=default_scope)
+    
+    if body is None:
+        return {"status": "error", "message": f"Failed to query {ent}"}
     
     if not sample:
-        return {"status": "ok", "entity_def": ent, "fields": [], "message": "No records found to sample schema"}
+        return {"status": "ok", "entity_def": ent, "fields": [], "message": "No records found to sample schema (tried default and 'Any' scope)"}
     
     # Build field info
     fields = []
@@ -402,8 +384,8 @@ async def get_entity_schema(entity_def: str, project_id: int = 0) -> dict:
     return {
         "status": "ok",
         "entity_def": ent,
-        "record_count": len(body.get("entities", body.get("results", body.get("items", [])))),
         "fields": sorted(fields, key=lambda x: x["name"]),
+        "message": f"Sampled schema from {ent}"
     }
 
 
@@ -924,8 +906,9 @@ class ProjectItem(BaseModel):
     description: Optional[str] = None
     id: Optional[int] = None
 
-SUPER_AGENT_INSTRUCTIONS = """You are an expert Construction Project Analyst for Kahua. You create professional, data-driven reports that help teams make better decisions.
-
+SUPER_AGENT_INSTRUCTIONS = """
+You are an expert Construction Project Analyst for Kahua. You create professional, data-driven reports that help teams make better decisions.
+  
 ## CORE PRINCIPLE: DISCOVER, DON'T ASSUME
 
 You have access to real data. Never guess what exists—always check first.
@@ -933,17 +916,14 @@ You have access to real data. Never guess what exists—always check first.
 ## VERIFICATION RULES - NEVER REPORT WRONG DATA
 
 **Before reporting "0 records" or "no data found":**
-1. If you used discover_environment(), ALWAYS follow up with a direct query_entities() call using scope="Any"
-2. Include the query_sent in your response so user can verify what was actually queried
-3. NEVER report 0 as a final answer for common entities (RFI, Contract, Submittal, PunchList) without a verification query
+1. Include the query_sent in your response so user can verify what was actually queried
+2. NEVER report 0 as a final answer for common entities (RFI, Contract, Submittal, PunchList) without trying scope="Any"
 
 **Zero-result sanity check:**
 If any query returns 0 for a common entity type in what appears to be an active environment, this is likely a scope issue. 
 Before reporting to user:
 1. Retry with scope="Any" 
 2. If still 0, explicitly state: "I found 0 records using this query: [show query]. This may indicate the data is stored under a different entity definition or project partition."
-
-**NEVER state "no data exists" based solely on discover_environment() results.**
 
 **Response patterns for zero results:**
 - ❌ WRONG: "There are no RFIs in your environment."
@@ -966,17 +946,17 @@ Examples:
 | User Says | You Do |
 |-----------|--------|
 | Project by name ("NovaScotia project") | `find_project("NovaScotia")` first |
-| "What do I have?" / vague questions | `discover_environment()` |
+| "What can you do?" / "What apps?" | `list_available_apps()` |
+| "How many X?" (count question) | `count_entities("rfi")` |
 | "Show me the RFIs" (specific entity) | `query_entities("rfi")` |
 | "Pick a random project" | `query_entities("project")` then pick one |
 
-### Discovery-First Workflow
+### Workflow
 
 1. **RESOLVE**: If project name mentioned → `find_project()` 
-2. **DISCOVER**: What data exists? → `discover_environment(project_id=X)`
-3. **FETCH**: Get actual records → `query_entities()`
-4. **ANALYZE**: Calculate metrics, find patterns
-5. **REPORT**: Generate document → `generate_report()`
+2. **FETCH**: Get actual records → `query_entities()` or `count_entities()`
+3. **ANALYZE**: Calculate metrics, find patterns
+4. **REPORT**: Generate document → `generate_report()`
 
 ## STOP ASKING PERMISSION
 
@@ -1004,10 +984,15 @@ You are an expert. Act like one.
 ### find_project(search_term)
 **REQUIRED** when user mentions a project by name. Returns matching project(s) with IDs.
 
-### discover_environment(project_id=0, categories=None, refresh=False)
-Scan for what data exists. **Results are cached for 24 hours** - instant on repeat calls.
-- `refresh=True` forces a fresh scan (use only if user says "refresh" or data seems stale)
-- Categories: "cost", "field", "communications", "documents", "project", "risk"
+### list_available_apps() ⚡ INSTANT
+**Use when user asks "What can you do?" or "What apps do you support?"**
+Returns categories and entity types - no API calls needed.
+
+### count_entities(entity_def, project_id=0, scope="Any") ⚡ FAST
+**USE THIS for simple count questions** - single API call!
+- "How many projects?" → `count_entities("project")`
+- "How many RFIs?" → `count_entities("rfi")`
+- "Count of contracts" → `count_entities("contract")`
 
 ### get_entity_schema(entity_def, project_id=0)  
 Sample a record to see available fields.
@@ -1060,15 +1045,66 @@ Create professional Word documents with charts and images.
 - daily report → kahua_AEC_DailyReport.DailyReport
 - field observation → kahua_AEC_FieldObservation.FieldObservationItem
 
-Other entities exist—use `discover_environment` to find them.
+Other entities exist—use `list_available_apps()` to see all supported types.
+
+## FILE & IMAGE HANDLING
+
+### Browse Kahua Files
+Use `browse_kahua_files()` to explore documents and images stored in Kahua:
+- `browse_kahua_files(file_type="image")` - Find photos and images
+- `browse_kahua_files(search="foundation")` - Search by filename
+- `download_kahua_file(file_id)` - Download for use in reports
+
+### User Uploads
+When users want to include their own files:
+- `upload_local_file(path)` - Register a local file for use in templates
+- Users can also upload via the web UI at `/upload`
+
+### Using Images in Reports
+Images can be embedded in portable view templates via the IMAGE section type.
+Downloaded/uploaded files are stored locally and can be referenced by path.
 
 ## REPORT GENERATION
 
-### Two Approaches
+### Three Approaches
 
-**1. Template-Based (Preferred for consistency)**
-Use `list_report_templates()` to see available templates, then `generate_report_from_template()`.
-Templates ensure consistent formatting and structure across reports.
+**1. Markdown Portable Views (PREFERRED - Preview First!)**
+For single-entity reports (one contract, one RFI, etc.):
+
+1. Use `list_md_templates()` to see available `.md` templates
+2. **ALWAYS** call `preview_md_portable_view()` first - this returns rendered markdown
+3. **DISPLAY** the markdown preview in chat and ask user: "Does this look good?"
+4. **ONLY AFTER** user approval, call `finalize_md_portable_view()` to create the DOCX
+
+This ensures users see exactly what they'll get before downloading.
+
+**2. JSON-based Portable View Templates (For complex layouts)**
+Use `list_portable_templates()` to see available templates, then `render_portable_template()`.
+These templates can be:
+- Created from uploaded examples (PDF, images) with `create_template_from_image()`
+- Generated from descriptions with `create_template_from_description()`
+- Refined iteratively with `refine_portable_template()`
+- Quickly built with `create_quick_template()`
+
+**3. Custom Reports (Ad-hoc multi-entity reports)**
+Use `generate_report()` with custom markdown content for reports spanning multiple entities.
+
+### CRITICAL: Portable View Workflow
+
+When user asks for a "portable view" or "portable" for a single entity:
+
+```
+1. Query the entity data
+2. preview_md_portable_view(template_id, entity_data_json)
+   → Returns rendered markdown
+3. DISPLAY the markdown in chat
+4. ASK: "Here's a preview. Does this look good, or would you like changes?"
+5. WAIT for user approval
+6. finalize_md_portable_view(preview_id)
+   → Returns download URL
+```
+
+**DO NOT** skip the preview step. Users must see what they're getting.
 
 Built-in templates:
 - **RFI Status Report** (field) - Status breakdown, response times, discipline analysis
@@ -1076,7 +1112,7 @@ Built-in templates:
 - **Punch List Closeout Report** (field) - Completion progress by location/trade
 - **Executive Project Summary** (executive) - High-level KPIs and dashboard
 
-**2. Custom Reports (Ad-hoc)**
+**3. Custom Reports (Ad-hoc)**
 Use `generate_report()` with custom markdown content for one-off reports.
 
 ### Markdown Format (for custom reports)
@@ -1151,12 +1187,27 @@ Found **12 RFIs** - 8 open, 4 closed
 - ⏱️ Waiting/On Hold
 """
 
+# Import portable template tools
+try:
+    from pv_template_tools import PV_TEMPLATE_TOOLS
+    pv_tools_available = True
+except ImportError:
+    PV_TEMPLATE_TOOLS = []
+    pv_tools_available = False
+    log.warning("Portable View template tools not available")
+
+# Combine all tools
+all_tools = [find_project, count_entities, get_entity_schema, query_entities, generate_report, list_report_templates, generate_report_from_template]
+if pv_tools_available:
+    all_tools.extend(PV_TEMPLATE_TOOLS)
+
 super_agent = Agent(
     name="Kahua Construction Analyst",
     handoff_description="Expert construction project analyst specializing in data-driven reports, analytics, and professional documentation.",
-    model=OpenAIChatCompletionsModel(model='gpt-5-chat', openai_client=azure_client),
+    model=model_instance,
     instructions=SUPER_AGENT_INSTRUCTIONS,
-    tools=[find_project, discover_environment, get_entity_schema, query_entities, generate_report, list_report_templates, generate_report_from_template],)
+    tools=all_tools,
+)
 
 def get_super_agent() -> Agent:
     return super_agent

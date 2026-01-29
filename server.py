@@ -8,10 +8,6 @@ from typing import Any, Dict, Callable, Optional, Tuple
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-try:
-    from openai.types.responses import ResponseTextDeltaEvent
-except Exception:
-    ResponseTextDeltaEvent = None  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -23,9 +19,12 @@ REPORTS_DIR.mkdir(exist_ok=True)
 # Load .env BEFORE importing modules that read env at import time
 load_dotenv()
 
-from agents_superagent import get_super_agent
-from agents import Runner, SQLiteSession
+# Use LangGraph agent (Claude via Anthropic SDK)
+from langgraph_agent import chat as langgraph_chat, get_agent
 import logging
+
+# Template builder API router
+from template_builder_api import router as template_builder_router
 
 
 class ChatRequest(BaseModel):
@@ -42,98 +41,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include template builder API routes
+app.include_router(template_builder_router)
+
 
 @app.on_event("startup")
 async def _startup() -> None:
-    # Warm up the sole agent on startup
-    app.state.super_agent = get_super_agent()
-    logging.getLogger("uvicorn.error").info("SuperAgent loaded: %s", app.state.super_agent.name)
-
-    # TTL session store to persist conversation state between requests with eviction
-    class SessionStore:
-        def __init__(self, ttl_seconds: int = 60 * 60, max_sessions: int = 200) -> None:
-            self._ttl = ttl_seconds
-            self._max = max_sessions
-            self._sessions: Dict[str, Tuple[SQLiteSession, float]] = {}
-            self._lock = asyncio.Lock()
-            self._janitor_task: Optional[asyncio.Task] = None
-
-        async def start(self) -> None:
-            if self._janitor_task is None:
-                self._janitor_task = asyncio.create_task(self._janitor())
-
-        async def stop(self) -> None:
-            if self._janitor_task is not None:
-                self._janitor_task.cancel()
-                try:
-                    await self._janitor_task
-                except Exception:
-                    pass
-                self._janitor_task = None
-            async with self._lock:
-                self._sessions.clear()
-
-        async def get_or_create(self, key: str, factory: Callable[[], SQLiteSession]) -> SQLiteSession:
-            now = time.time()
-            async with self._lock:
-                entry = self._sessions.get(key)
-                if entry is not None:
-                    sess, _ = entry
-                    self._sessions[key] = (sess, now)
-                    return sess
-                # Evict if over capacity (LRU based on last used)
-                if len(self._sessions) >= self._max:
-                    # sort by last_used asc
-                    oldest_key = min(self._sessions.items(), key=lambda kv: kv[1][1])[0]
-                    self._sessions.pop(oldest_key, None)
-                sess = factory()
-                self._sessions[key] = (sess, now)
-                return sess
-
-        async def _janitor(self) -> None:
-            try:
-                while True:
-                    await asyncio.sleep(60)
-                    cutoff = time.time() - self._ttl
-                    async with self._lock:
-                        to_delete = [k for k, (_, ts) in self._sessions.items() if ts < cutoff]
-                        for k in to_delete:
-                            self._sessions.pop(k, None)
-            except asyncio.CancelledError:
-                return
-
-    store = SessionStore()
-    app.state.session_store = store
-    await store.start()
+    # Warm up the LangGraph agent on startup
+    app.state.agent = get_agent()
+    logging.getLogger("uvicorn.error").info("LangGraph Agent loaded (Claude)")
 
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    store = getattr(app.state, "session_store", None)
-    if store is not None:
-        try:
-            await store.stop()
-        except Exception:
-            pass
+    pass  # No cleanup needed for LangGraph
+
 
 @app.get("/health")
 async def health() -> Dict[str, Any]:
     return {"status": "ok"}
 
+
 @app.get("/agent")
 async def agent_info() -> Dict[str, Any]:
-    ag = getattr(app.state, "super_agent", None)
-    if ag is None:
-        ag = get_super_agent()
-        app.state.super_agent = ag
-    # Try to show a short preview of instructions
-    preview = ""
-    try:
-        text = getattr(ag, "instructions", "") or ""
-        preview = text[:240]
-    except Exception:
-        preview = ""
-    return {"name": getattr(ag, "name", ""), "instructions_preview": preview}
+    return {
+        "name": "Kahua Construction Analyst",
+        "model": "Claude (via LangGraph)",
+        "status": "ready"
+    }
 
 
 @app.get("/reports/{filename}")
@@ -143,9 +78,19 @@ async def get_report(filename: str):
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
     
-    # Support both .docx and .pdf for backwards compatibility
+    # Auto-append .docx if no extension provided
     if not (filename.endswith(".docx") or filename.endswith(".pdf")):
-        raise HTTPException(status_code=400, detail="Only .docx and .pdf files are supported")
+        # Try to find the file with .docx extension
+        docx_path = REPORTS_DIR / f"{filename}.docx"
+        if docx_path.exists():
+            filename = f"{filename}.docx"
+        else:
+            # Try .pdf
+            pdf_path = REPORTS_DIR / f"{filename}.pdf"
+            if pdf_path.exists():
+                filename = f"{filename}.pdf"
+            else:
+                raise HTTPException(status_code=404, detail="Report not found")
     
     file_path = REPORTS_DIR / filename
     if not file_path.exists():
@@ -162,9 +107,119 @@ async def get_report(filename: str):
         media_type=media_type,
         filename=filename,
         headers={
-            "Content-Disposition": f"attachment; filename=\"{filename}\"",  # attachment for download
+            "Content-Disposition": f"attachment; filename=\"{filename}\"",
         }
     )
+
+
+# ============== Portable View Template API ==============
+
+PV_TEMPLATES_DIR = Path(__file__).parent / "pv_templates" / "saved"
+
+@app.get("/api/pv-templates")
+async def list_pv_templates() -> Dict[str, Any]:
+    """List available portable view templates."""
+    templates = []
+    if PV_TEMPLATES_DIR.exists():
+        for f in PV_TEMPLATES_DIR.glob("*.json"):
+            try:
+                with open(f, 'r') as fp:
+                    data = json.load(fp)
+                    templates.append({
+                        "id": data.get("id", f.stem),
+                        "name": data.get("name", "Untitled"),
+                        "description": data.get("description", "")[:200],
+                        "target_entity_def": data.get("target_entity_def", ""),
+                        "created_at": data.get("created_at"),
+                    })
+            except Exception:
+                pass
+    return {"templates": templates, "count": len(templates)}
+
+
+@app.get("/api/pv-templates/{template_id}")
+async def get_pv_template(template_id: str) -> Dict[str, Any]:
+    """Get a portable view template by ID."""
+    # Security check
+    if ".." in template_id or "/" in template_id or "\\" in template_id:
+        raise HTTPException(status_code=400, detail="Invalid template ID")
+    
+    # Try with and without .json extension
+    file_path = PV_TEMPLATES_DIR / f"{template_id}.json"
+    if not file_path.exists():
+        file_path = PV_TEMPLATES_DIR / template_id
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Template not found")
+    
+    with open(file_path, 'r') as f:
+        return json.load(f)
+
+
+@app.get("/api/pv-templates/{template_id}/download")
+async def download_pv_template(template_id: str):
+    """Download a portable view template as JSON."""
+    # Security check
+    if ".." in template_id or "/" in template_id or "\\" in template_id:
+        raise HTTPException(status_code=400, detail="Invalid template ID")
+    
+    file_path = PV_TEMPLATES_DIR / f"{template_id}.json"
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    return FileResponse(
+        path=file_path,
+        media_type="application/json",
+        filename=f"{template_id}.json",
+        headers={"Content-Disposition": f"attachment; filename=\"{template_id}.json\""}
+    )
+
+
+class RenderPVTemplateRequest(BaseModel):
+    entity_data: dict  # The entity data to render
+
+
+@app.post("/api/pv-templates/{template_id}/render")
+async def render_pv_template(template_id: str, req: RenderPVTemplateRequest) -> Dict[str, Any]:
+    """Render a portable view template with entity data to a Word document."""
+    from pv_template_schema import PortableTemplate
+    from pv_template_renderer import TemplateRenderer
+    
+    # Security check
+    if ".." in template_id or "/" in template_id or "\\" in template_id:
+        raise HTTPException(status_code=400, detail="Invalid template ID")
+    
+    file_path = PV_TEMPLATES_DIR / f"{template_id}.json"
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    # Load template
+    with open(file_path, 'r') as f:
+        template = PortableTemplate.from_json(f.read())
+    
+    # Extract entity data from wrapped formats
+    entity_data = req.entity_data
+    if isinstance(entity_data, dict):
+        if "entities" in entity_data and isinstance(entity_data["entities"], list):
+            if entity_data["entities"]:
+                entity_data = entity_data["entities"][0]
+            else:
+                raise HTTPException(status_code=400, detail="No entities in data")
+        elif "sets" in entity_data and isinstance(entity_data["sets"], list):
+            for s in entity_data["sets"]:
+                if isinstance(s.get("entities"), list) and s["entities"]:
+                    entity_data = s["entities"][0]
+                    break
+    
+    # Render to document
+    renderer = TemplateRenderer(output_dir=REPORTS_DIR)
+    output_path, doc_bytes = renderer.render(template, entity_data)
+    
+    return {
+        "status": "ok",
+        "filename": output_path.name,
+        "download_url": f"/reports/{output_path.name}",
+        "size_bytes": len(doc_bytes)
+    }
 
 
 @app.get("/reports")
@@ -183,6 +238,100 @@ async def list_reports() -> Dict[str, Any]:
     # Sort by creation time, newest first
     reports.sort(key=lambda r: r["created"], reverse=True)
     return {"reports": reports}
+
+
+# ============== File Upload API ==============
+
+from fastapi import UploadFile, File as FastAPIFile
+
+UPLOADS_DIR = Path(__file__).parent / "uploads"
+UPLOADS_DIR.mkdir(exist_ok=True)
+
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = FastAPIFile(...)) -> Dict[str, Any]:
+    """
+    Upload a file (image, docx, pdf) for use in reports.
+    Returns the file path that can be used in templates.
+    """
+    try:
+        # Validate file type
+        allowed_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", 
+                            ".pdf", ".docx", ".doc", ".xlsx", ".xls"}
+        suffix = Path(file.filename).suffix.lower()
+        if suffix not in allowed_extensions:
+            return {"status": "error", "error": f"File type {suffix} not allowed"}
+        
+        # Save file
+        dest_path = UPLOADS_DIR / file.filename
+        content = await file.read()
+        dest_path.write_bytes(content)
+        
+        # Determine file type
+        file_type = "unknown"
+        if suffix in [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"]:
+            file_type = "image"
+        elif suffix == ".pdf":
+            file_type = "pdf"
+        elif suffix in [".docx", ".doc"]:
+            file_type = "word"
+        elif suffix in [".xlsx", ".xls"]:
+            file_type = "excel"
+        
+        base_url = os.getenv("REPORT_BASE_URL", "http://localhost:8000")
+        
+        return {
+            "status": "ok",
+            "filename": file.filename,
+            "path": str(dest_path),
+            "type": file_type,
+            "size_bytes": len(content),
+            "url": f"{base_url}/uploads/{file.filename}"
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@app.get("/uploads/{filename}")
+async def get_uploaded_file(filename: str):
+    """Serve an uploaded file."""
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    file_path = UPLOADS_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Determine media type
+    suffix = file_path.suffix.lower()
+    media_types = {
+        ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+        ".gif": "image/gif", ".bmp": "image/bmp", ".webp": "image/webp",
+        ".pdf": "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".doc": "application/msword",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xls": "application/vnd.ms-excel"
+    }
+    
+    return FileResponse(path=file_path, media_type=media_types.get(suffix, "application/octet-stream"))
+
+
+@app.get("/uploads")
+async def list_uploads() -> Dict[str, Any]:
+    """List all uploaded files."""
+    files = []
+    for f in UPLOADS_DIR.iterdir():
+        if f.is_file():
+            suffix = f.suffix.lower()
+            file_type = "image" if suffix in [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"] else "document"
+            files.append({
+                "filename": f.name,
+                "type": file_type,
+                "size_bytes": f.stat().st_size,
+                "url": f"/uploads/{f.name}"
+            })
+    return {"files": files, "count": len(files)}
 
 
 # ============== Template Management API ==============
@@ -233,9 +382,35 @@ async def list_templates(
     """List all report templates with optional filtering."""
     store = get_template_store()
     templates = store.list_templates(category=category, search=search)
+    result_templates = [t.to_dict() for t in templates]
+    
+    # Also include custom templates from pv_template_generator
+    try:
+        from pv_template_generator import list_saved_templates
+        custom_result = list_saved_templates()
+        for ct in custom_result.get("templates", []):
+            # Convert to same format as ReportTemplate
+            custom_template = {
+                "id": ct["id"],
+                "name": ct["name"],
+                "description": ct.get("description", ""),
+                "category": "portable-view",  # Special category for PV templates
+                "entity_def": ct.get("entity_def"),
+                "created_at": ct.get("created_at"),
+                "is_custom": True,  # Flag to identify agent-created templates
+            }
+            # Apply filters if provided
+            if category and category != "portable-view":
+                continue
+            if search and search.lower() not in ct["name"].lower():
+                continue
+            result_templates.append(custom_template)
+    except ImportError:
+        pass  # pv_template_generator not available
+    
     return {
-        "templates": [t.to_dict() for t in templates],
-        "count": len(templates)
+        "templates": result_templates,
+        "count": len(result_templates)
     }
 
 
@@ -398,108 +573,45 @@ async def delete_query(query_id: str) -> Dict[str, Any]:
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest) -> Dict[str, Any]:
+    log = logging.getLogger("uvicorn.error")
+    
     if not req.message or not req.message.strip():
         raise HTTPException(status_code=400, detail="message is required")
 
-    agent = getattr(app.state, "super_agent", get_super_agent())
-
     session_id = (req.session_id or "web").strip()
-    store = getattr(app.state, "session_store", None)
-    if store is None:
-        # Fallback to direct session creation if store not initialized for any reason
-        session = SQLiteSession(session_id)
-    else:
-        session = await store.get_or_create(session_id, lambda: SQLiteSession(session_id))
-
+    
     try:
-        logging.getLogger("uvicorn.error").info("/api/chat using agent=SuperAgent session=%s", session_id)
-        result = await Runner.run(agent, req.message.strip(), session=session)
-    except KeyError as e:
-        # Common when missing required env variables
-        raise HTTPException(status_code=500, detail=f"Missing environment variable: {e}")
+        log.info("/api/chat session=%s message=%s", session_id, req.message[:50])
+        response = await langgraph_chat(req.message.strip(), session_id=session_id)
+        log.info("Got response, length=%d", len(response))
     except Exception as e:
+        log.exception("Chat error")
         raise HTTPException(status_code=500, detail=str(e))
 
     return {
-        "final_output": result.final_output,
+        "final_output": response,
     }
 
 
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
+    """Streaming endpoint - falls back to non-streaming for now with LangGraph."""
     if not req.message or not req.message.strip():
         raise HTTPException(status_code=400, detail="message is required")
 
-    agent = getattr(app.state, "super_agent", get_super_agent())
-
     session_id = (req.session_id or "web").strip()
-    store = getattr(app.state, "session_store", None)
-    if store is None:
-        session = SQLiteSession(session_id)
-    else:
-        session = await store.get_or_create(session_id, lambda: SQLiteSession(session_id))
 
     async def event_stream():
-        # announce start
-        yield f"data: {json.dumps({"type": "start", "session_id": session_id})}\n\n"
+        yield f"data: {json.dumps({'type': 'start', 'session_id': session_id})}\n\n"
         try:
-            # use true streaming from the agents Runner
-            streamed = Runner.run_streamed(
-                agent,
-                input=req.message.strip(),
-                session=session,
-            )
-
-            last_event_time = asyncio.get_event_loop().time()
-            async for ev in streamed.stream_events():
-                # Raw response deltas → token text
-                if getattr(ev, "type", None) == "raw_response_event":
-                    data = getattr(ev, "data", None)
-                    if ResponseTextDeltaEvent is not None and isinstance(data, ResponseTextDeltaEvent):
-                        delta = getattr(data, "delta", None)
-                        if isinstance(delta, str) and delta:
-                            yield f"data: {json.dumps({"type": "delta", "content": delta})}\n\n"
-                    # Ignore all other raw delta event types (e.g., tool call argument deltas)
-                # Agent updates (handoffs)
-                elif getattr(ev, "type", None) == "agent_updated_stream_event":
-                    new_agent = getattr(ev, "new_agent", None)
-                    name = getattr(new_agent, "name", "") if new_agent is not None else ""
-                    yield f"data: {json.dumps({"type": "agent", "name": name})}\n\n"
-                # Run item events (tool calls, messages)
-                elif getattr(ev, "type", None) == "run_item_stream_event":
-                    item = getattr(ev, "item", None)
-                    item_type = getattr(item, "type", "")
-                    if item_type:
-                        # Extract tool name for tool calls
-                        tool_name = None
-                        if item_type == "tool_call_item":
-                            # Try to get the tool name from various possible locations
-                            tool_name = getattr(item, "name", None) or getattr(item, "tool_name", None)
-                            # Try raw_item if name not directly accessible
-                            if not tool_name:
-                                raw_item = getattr(item, "raw_item", None)
-                                if raw_item:
-                                    tool_name = getattr(raw_item, "name", None)
-                        yield f"data: {json.dumps({"type": "item", "item_type": item_type, "tool_name": tool_name})}\n\n"
-                        
-                        # Also emit a tool_output event when tool completes
-                        if item_type == "tool_call_output_item":
-                            yield f"data: {json.dumps({"type": "tool_output", "tool_name": tool_name})}\n\n"
-
-                # occasional heartbeat to keep connections warm
-                now = asyncio.get_event_loop().time()
-                if now - last_event_time > 1.0:
-                    yield "data: {\"type\": \"ping\"}\n\n"
-                    last_event_time = now
-
-            # done
+            # LangGraph doesn't have built-in streaming yet, so get full response
+            response = await langgraph_chat(req.message.strip(), session_id=session_id)
+            
+            # Emit as a single delta for now
+            yield f"data: {json.dumps({'type': 'delta', 'content': response})}\n\n"
             yield "data: {\"type\": \"done\"}\n\n"
-        except KeyError as e:
-            err = {"type": "error", "message": f"Missing environment variable: {e}"}
-            yield f"data: {json.dumps(err)}\n\n"
         except Exception as e:
-            err = {"type": "error", "message": str(e)}
-            yield f"data: {json.dumps(err)}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     headers = {
         "Cache-Control": "no-cache",
@@ -511,6 +623,4 @@ async def chat_stream(req: ChatRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=True)
-
-
+    uvicorn.run("server:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=False)
