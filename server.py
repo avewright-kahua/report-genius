@@ -621,6 +621,157 @@ async def chat_stream(req: ChatRequest):
     return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
 
 
+# ============== Unified Template API (SOTA Agent) ==============
+
+from unified_templates import get_unified_system
+
+class SmartComposeRequest(BaseModel):
+    """Request to create a template using SOTA agent."""
+    entity_type: str
+    archetype: str | None = None
+    user_intent: str | None = None
+    name: str | None = None
+
+
+class AgentToolRequest(BaseModel):
+    """Request to execute an agent tool."""
+    tool_name: str
+    args: Dict[str, Any]
+
+
+@app.get("/api/unified/archetypes")
+async def list_archetypes() -> Dict[str, Any]:
+    """List available template archetypes."""
+    system = get_unified_system()
+    return {"archetypes": system.get_archetypes()}
+
+
+@app.get("/api/unified/entities")
+async def list_tg_entities() -> Dict[str, Any]:
+    """List entity types available in template_gen."""
+    system = get_unified_system()
+    entities = []
+    for name, schema in system.tg_schemas.items():
+        entities.append({
+            "id": name,
+            "name": schema.name,
+            "entity_def": schema.entity_def,
+            "field_count": len(schema.fields),
+        })
+    return {"entities": entities}
+
+
+@app.post("/api/unified/compose")
+async def smart_compose_template(req: SmartComposeRequest) -> Dict[str, Any]:
+    """Create a template using SOTA agent composer."""
+    try:
+        system = get_unified_system()
+        template = system.compose_smart(
+            entity_type=req.entity_type,
+            archetype=req.archetype,
+            user_intent=req.user_intent,
+            name=req.name,
+        )
+        
+        # Save template
+        output_dir = Path(__file__).parent / "pv_templates" / "saved"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        json_path = output_dir / f"{template.id}.json"
+        json_path.write_text(template.model_dump_json(indent=2))
+        
+        return {
+            "status": "ok",
+            "template": template.model_dump(),
+            "saved_path": str(json_path),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/unified/render-docx/{template_id}")
+async def render_unified_template(template_id: str) -> Dict[str, Any]:
+    """Render a unified template to DOCX with Kahua syntax."""
+    from unified_templates import get_unified_system
+    from template_gen.template_schema import PortableViewTemplate
+    
+    # Security check
+    if ".." in template_id or "/" in template_id or "\\" in template_id:
+        raise HTTPException(status_code=400, detail="Invalid template ID")
+    
+    # Find template
+    saved_dir = Path(__file__).parent / "pv_templates" / "saved"
+    json_path = saved_dir / f"{template_id}.json"
+    
+    if not json_path.exists():
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    # Load and render
+    template = PortableViewTemplate.model_validate_json(json_path.read_text())
+    system = get_unified_system()
+    
+    docx_path = REPORTS_DIR / f"{template_id}.docx"
+    system.render_to_docx(template, docx_path)
+    
+    return {
+        "status": "ok",
+        "filename": docx_path.name,
+        "download_url": f"/reports/{docx_path.name}",
+    }
+
+
+# Agent session storage (simple in-memory for now)
+_agent_sessions: Dict[str, Any] = {}
+
+@app.post("/api/unified/agent/session")
+async def create_agent_session() -> Dict[str, Any]:
+    """Create a new agent session for conversational template creation."""
+    import uuid
+    session_id = f"agent-{uuid.uuid4().hex[:8]}"
+    
+    system = get_unified_system()
+    session = system.create_agent_session()
+    _agent_sessions[session_id] = session
+    
+    return {
+        "session_id": session_id,
+        "tools": session.available_tools,
+    }
+
+
+@app.post("/api/unified/agent/{session_id}/execute")
+async def execute_agent_tool(session_id: str, req: AgentToolRequest) -> Dict[str, Any]:
+    """Execute a tool in an agent session."""
+    if session_id not in _agent_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    session = _agent_sessions[session_id]
+    result = session.execute_tool(req.tool_name, req.args)
+    
+    # Include current template if one exists
+    current = None
+    if session.current_template:
+        current = session.current_template.model_dump()
+    
+    return {
+        "result": result,
+        "current_template": current,
+    }
+
+
+@app.get("/api/unified/agent/{session_id}/template")
+async def get_agent_session_template(session_id: str) -> Dict[str, Any]:
+    """Get the current template from an agent session."""
+    if session_id not in _agent_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    session = _agent_sessions[session_id]
+    if not session.current_template:
+        return {"template": None}
+    
+    return {"template": session.current_template.model_dump()}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=False)

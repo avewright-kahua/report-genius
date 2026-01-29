@@ -1,0 +1,153 @@
+# Report Genius - .gitignore
+
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.env.local
+
+# =============================================================================
+# IDE / Editor
+# =============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# =============================================================================
+# Environment and Secrets
+# =============================================================================
+.env
+.env.local
+.env.*.local
+*.env
+.env_cache.json
+
+# =============================================================================
+# Testing
+# =============================================================================
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# =============================================================================
+# Build artifacts
+# =============================================================================
+*.manifest
+*.spec
+
+# =============================================================================
+# Jupyter Notebooks
+# =============================================================================
+.ipynb_checkpoints/
+*.ipynb
+
+# =============================================================================
+# Data and Outputs (large/generated files)
+# =============================================================================
+*.har
+*.xls
+*.xlsx
+*.csv
+!data/sample_templates/**
+
+# Generated reports
+reports/*.docx
+reports/*.pdf
+uploads/
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# =============================================================================
+# Node.js / Frontend
+# =============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.npm/
+.yarn/
+
+# Build output
+dist/
+build/
+*.local
+
+# =============================================================================
+# OS Generated
+# =============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# =============================================================================
+# Temporary files
+# =============================================================================
+*.tmp
+*.temp
+*.bak
+*.log
+
+# =============================================================================
+# Project-specific exclusions
+# =============================================================================
+# Kahua data files (contain sensitive API data)
+contract_data.json
+postman.json
+postman2.json
+AppInfo.xml
+AppGroupInfo.xml
+response.xls
+
+# Legacy/experimental files
+tbe/
+
+# Legacy pv_templates folder (moved to data/)
+pv_templates/
