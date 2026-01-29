@@ -118,6 +118,7 @@ class HeaderConfig(BaseModel):
     show_labels: bool = False
     show_logo: bool = False  # Include company/project logo
     logo_type: str = "company"  # "company" or "project"
+    logo_position: str = "left"  # "left" or "right"
 
 
 class DetailConfig(BaseModel):

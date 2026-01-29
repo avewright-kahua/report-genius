@@ -398,6 +398,7 @@ class UnifiedTemplateSystem:
         self,
         template: Union[TGPortableTemplate, RGPortableTemplate],
         output_path: Optional[Path] = None,
+        use_sota: bool = True,
     ) -> Optional[bytes]:
         """
         Render a template to DOCX with Kahua placeholder syntax.
@@ -405,6 +406,7 @@ class UnifiedTemplateSystem:
         Args:
             template: Template in either format
             output_path: Path to save file, or None to return bytes
+            use_sota: Use the SOTA renderer for professional output
             
         Returns:
             DOCX bytes if no output_path, None otherwise
@@ -413,7 +415,16 @@ class UnifiedTemplateSystem:
         if isinstance(template, RGPortableTemplate):
             template = rg_to_tg_template(template)
         
-        renderer = DocxRenderer(template)
+        # Use SOTA renderer for better quality
+        if use_sota:
+            try:
+                from template_gen.docx_renderer_sota import SOTADocxRenderer
+                renderer = SOTADocxRenderer(template)
+            except ImportError:
+                # Fallback to standard renderer
+                renderer = DocxRenderer(template)
+        else:
+            renderer = DocxRenderer(template)
         
         if output_path:
             renderer.render_to_file(output_path)
