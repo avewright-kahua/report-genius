@@ -529,14 +529,35 @@ class SOTADocxRenderer:
             logo_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
         set_cell_vertical_alignment(logo_cell, "center")
         
-        # Title cell
+        # Static title first (if provided) - literal text, not a placeholder
+        if config.static_title:
+            static_p = title_cell.paragraphs[0]
+            run = static_p.add_run(config.static_title)
+            run.font.name = config.title_font or self.tokens.FONT_HEADING
+            run.font.size = Pt(config.title_size or self.tokens.SIZE_TITLE)
+            run.font.bold = config.title_bold
+            if config.title_color:
+                run.font.color.rgb = RGBColor(*hex_to_rgb(config.title_color))
+            else:
+                run.font.color.rgb = RGBColor(*hex_to_rgb(self.tokens.COLOR_PRIMARY))
+            # Alignment
+            align_map = {Alignment.LEFT: WD_ALIGN_PARAGRAPH.LEFT, Alignment.CENTER: WD_ALIGN_PARAGRAPH.CENTER, Alignment.RIGHT: WD_ALIGN_PARAGRAPH.RIGHT}
+            static_p.alignment = align_map.get(config.title_alignment, WD_ALIGN_PARAGRAPH.LEFT)
+            # Add dynamic title below static title
+            title_p = title_cell.add_paragraph()
+        else:
+            title_p = title_cell.paragraphs[0]
+        
+        # Dynamic title (placeholder)
         title_text = self._expand_template(config.title_template)
-        title_p = title_cell.paragraphs[0]
         run = title_p.add_run(title_text)
-        run.font.name = self.tokens.FONT_HEADING
-        run.font.size = Pt(self.tokens.SIZE_TITLE)
-        run.font.bold = True
-        run.font.color.rgb = RGBColor(*hex_to_rgb(self.tokens.COLOR_PRIMARY))
+        run.font.name = config.title_font or self.tokens.FONT_HEADING
+        run.font.size = Pt(config.title_size or self.tokens.SIZE_TITLE)
+        run.font.bold = config.title_bold
+        if config.title_color:
+            run.font.color.rgb = RGBColor(*hex_to_rgb(config.title_color))
+        else:
+            run.font.color.rgb = RGBColor(*hex_to_rgb(self.tokens.COLOR_PRIMARY))
         if position == "right":
             title_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
         else:
@@ -560,13 +581,32 @@ class SOTADocxRenderer:
     
     def _render_header_simple(self, config: HeaderConfig) -> None:
         """Render simple header without logo."""
+        # Static title first (if provided) - literal text, not a placeholder
+        if config.static_title:
+            p = self.doc.add_paragraph()
+            run = p.add_run(config.static_title)
+            run.font.name = config.title_font or self.tokens.FONT_HEADING
+            run.font.size = Pt(config.title_size or self.tokens.SIZE_TITLE)
+            run.font.bold = config.title_bold
+            if config.title_color:
+                run.font.color.rgb = RGBColor(*hex_to_rgb(config.title_color))
+            else:
+                run.font.color.rgb = RGBColor(*hex_to_rgb(self.tokens.COLOR_PRIMARY))
+            # Alignment
+            align_map = {Alignment.LEFT: WD_ALIGN_PARAGRAPH.LEFT, Alignment.CENTER: WD_ALIGN_PARAGRAPH.CENTER, Alignment.RIGHT: WD_ALIGN_PARAGRAPH.RIGHT}
+            p.alignment = align_map.get(config.title_alignment, WD_ALIGN_PARAGRAPH.LEFT)
+        
+        # Dynamic title (placeholder-based)
         title_text = self._expand_template(config.title_template)
         p = self.doc.add_paragraph()
         run = p.add_run(title_text)
-        run.font.name = self.tokens.FONT_HEADING
-        run.font.size = Pt(self.tokens.SIZE_TITLE)
-        run.font.bold = True
-        run.font.color.rgb = RGBColor(*hex_to_rgb(self.tokens.COLOR_PRIMARY))
+        run.font.name = config.title_font or self.tokens.FONT_HEADING
+        run.font.size = Pt(config.title_size or self.tokens.SIZE_TITLE)
+        run.font.bold = config.title_bold
+        if config.title_color:
+            run.font.color.rgb = RGBColor(*hex_to_rgb(config.title_color))
+        else:
+            run.font.color.rgb = RGBColor(*hex_to_rgb(self.tokens.COLOR_PRIMARY))
         
         if config.subtitle_template:
             subtitle_text = self._expand_template(config.subtitle_template)

@@ -119,6 +119,16 @@ class HeaderConfig(BaseModel):
     show_logo: bool = False  # Include company/project logo
     logo_type: str = "company"  # "company" or "project"
     logo_position: str = "left"  # "left" or "right"
+    
+    # Static title (literal text, not a placeholder)
+    static_title: Optional[str] = None  # If set, displayed as literal text before/above placeholders
+    
+    # Title styling overrides
+    title_font: Optional[str] = None      # Font family (e.g., "Comic Sans MS", "Arial Black")
+    title_size: Optional[int] = None      # Font size in points (e.g., 28)
+    title_color: Optional[str] = None     # Hex color (e.g., "#0000FF" for blue)
+    title_bold: bool = True               # Whether title is bold
+    title_alignment: Alignment = Alignment.LEFT
 
 
 class DetailConfig(BaseModel):
