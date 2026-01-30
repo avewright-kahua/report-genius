@@ -368,11 +368,14 @@ class DocxRenderer:
         if not config:
             return
         
-        # Logo if requested
+        # Logo if requested - make placeholder clearly visible
         if config.show_logo:
             logo_token = "[CompanyLogo(Height=60,Width=60)]" if config.logo_type == "company" else "[ProjectLogo(Height=60,Width=60)]"
             p = self.doc.add_paragraph()
-            p.add_run(logo_token)
+            run = p.add_run(logo_token)
+            run.font.size = Pt(12)  # Larger font for visibility
+            run.font.bold = True
+            run.font.color.rgb = RGBColor(113, 128, 150)  # Gray to indicate placeholder
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
         
         # Title from template

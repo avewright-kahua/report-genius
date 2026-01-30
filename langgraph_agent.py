@@ -272,16 +272,37 @@ def generate_report(
     charts_json: str = None
 ) -> dict:
     """
-    Generate a professional Word document report.
+    Generate an ANALYTICS REPORT document from markdown and charts.
+    
+    ╔══════════════════════════════════════════════════════════════════════╗
+    ║ ⚠️  THIS IS NOT FOR TEMPLATES!                                        ║
+    ║     For templates/portable views → use build_custom_template          ║
+    ╚══════════════════════════════════════════════════════════════════════╝
+    
+    This tool creates ONE-TIME REPORTS with:
+    - Actual data values (not placeholders)
+    - Dark blue header banner with the title
+    - Charts and analysis
+    
+    For Kahua portable view templates (reusable templates with placeholders like
+    [Attribute(Number)]), use `build_custom_template` + `render_smart_template` instead.
     
     Args:
-        title: Report title.
-        markdown_content: Body content in markdown format.
+        title: Report title (appears in dark blue banner).
+        markdown_content: Body content with actual data values.
         subtitle: Optional subtitle.
         charts_json: JSON array of chart specs.
     
     Returns:
         Dict with filename and download URL.
+    
+    ✅ USE FOR:
+        - "Show me all overdue RFIs" → analytics report
+        - "Summarize contract spending" → data report
+        
+    ❌ DO NOT USE FOR:
+        - "Create an RFI template" → use build_custom_template instead
+        - "Build a portable view" → use build_custom_template instead
     """
     try:
         charts = json.loads(charts_json) if charts_json else None
@@ -822,11 +843,39 @@ try:
             
             # Build sections
             built_sections = []
+            has_header = any(spec.get("type") == "header" for spec in sections_spec)
+            
+            # Auto-create header section if none specified and logo is requested
+            if not has_header and include_logo:
+                # Find best title field (Number, Subject, or first identity field)
+                title_field_path = "Number"  # Default
+                subtitle_field_path = "Subject"  # Default subtitle
+                
+                for f in schema.fields:
+                    if f.category.value == "identity":
+                        if f.path.lower() in ["number", "id", "reference"]:
+                            title_field_path = f.path
+                        elif f.path.lower() in ["subject", "name", "title", "description"]:
+                            subtitle_field_path = f.path
+                
+                auto_header = HeaderConfig(
+                    title_template=f"{{{title_field_path}}}",
+                    subtitle_template=f"{{{subtitle_field_path}}}",
+                    fields=[],
+                    show_logo=True,
+                )
+                built_sections.append(Section(
+                    type=SectionType.HEADER, order=0, header_config=auto_header
+                ))
+            
             for idx, spec in enumerate(sections_spec):
                 sec_type = SectionType(spec.get("type", "detail"))
                 title = spec.get("title", "")
                 fields = spec.get("fields", [])
                 formatting = spec.get("formatting", {})
+                
+                # Adjust order if we auto-added a header
+                section_order = idx + 1 if (not has_header and include_logo) else idx
                 
                 if sec_type == SectionType.HEADER:
                     # Header section
@@ -839,7 +888,7 @@ try:
                         show_logo=include_logo,
                     )
                     built_sections.append(Section(
-                        type=SectionType.HEADER, order=idx, header_config=config
+                        type=SectionType.HEADER, order=section_order, header_config=config
                     ))
                     
                 elif sec_type == SectionType.DETAIL:
@@ -856,7 +905,7 @@ try:
                         columns=formatting.get("columns", 2),
                     )
                     built_sections.append(Section(
-                        type=SectionType.DETAIL, title=title, order=idx, detail_config=config
+                        type=SectionType.DETAIL, title=title, order=section_order, detail_config=config
                     ))
                     
                 elif sec_type == SectionType.TABLE:
@@ -868,7 +917,7 @@ try:
                     ]
                     config = TableConfig(source=source, columns=columns, show_header=True)
                     built_sections.append(Section(
-                        type=SectionType.TABLE, title=title, order=idx, table_config=config
+                        type=SectionType.TABLE, title=title, order=section_order, table_config=config
                     ))
                     
                 elif sec_type == SectionType.TEXT:
@@ -879,7 +928,7 @@ try:
                         content = "\n\n".join(f"{{{f}}}" for f in fields)
                     config = TextConfig(content=content)
                     built_sections.append(Section(
-                        type=SectionType.TEXT, title=title, order=idx, text_config=config
+                        type=SectionType.TEXT, title=title, order=section_order, text_config=config
                     ))
             
             # Create template
@@ -1186,6 +1235,26 @@ def create_llm():
 
 SYSTEM_PROMPT = """You are an expert Construction Project Analyst for Kahua. You create professional, data-driven reports and custom document templates.
 
+## CRITICAL: TOOL SELECTION FOR DOCUMENT CREATION
+
+### PORTABLE VIEW TEMPLATES (reusable Kahua templates)
+**ALWAYS USE:** `build_custom_template` → then → `render_smart_template`
+**Output:** Clean DOCX with Kahua placeholders like `[Attribute(RFI.Number)]`
+**Title in document:** Dynamic placeholder like `[Attribute(RFI.Number)]` NOT static text
+**Trigger words:** "template", "portable view", "PV", "reusable", "design"
+
+### ANALYTICS REPORTS (one-time data reports)
+**ALWAYS USE:** `generate_report`  
+**Output:** DOCX with actual values, charts, dark blue header banner
+**Trigger words:** "report", "summary", "analysis", "show me", "list all"
+
+╔════════════════════════════════════════════════════════════════════════╗
+║ ⚠️  NEVER use generate_report for templates!                          ║
+║ ⚠️  Templates must use build_custom_template + render_smart_template  ║
+║ ⚠️  The document title should be a PLACEHOLDER like [Attribute(Number)]║
+║     NOT static text like "RFI Portable View Template"                  ║
+╚════════════════════════════════════════════════════════════════════════╝
+
 ## CORE PRINCIPLE: USE YOUR TOOLS
 
 You have tools that work. When a user asks for something, USE THE TOOLS - don't guess whether they'll work.
@@ -1202,11 +1271,10 @@ These entities are CONFIGURED and READY. When a user asks for a template for any
 
 ## WHAT YOU CAN DO
 
+- Create portable view templates with Kahua placeholder syntax using `build_custom_template`
 - Query Kahua entities (RFIs, contracts, submittals, etc.)
-- Generate Word document templates with Kahua placeholder syntax
-- Create CUSTOM templates based on user specifications using `build_custom_template`
+- Generate analytics reports with actual data using `generate_report`
 - Modify templates based on user feedback using `modify_existing_template`
-- Create reports from queried data
 
 ## WHAT YOU CANNOT DO
 
@@ -1223,6 +1291,7 @@ If the user gives you fields and formatting preferences, call `build_custom_temp
 Example:
 User: "Build me an RFI template with Number, Subject, Question, Response. Two columns, make Subject bold."
 → IMMEDIATELY call build_custom_template("RFI", "RFI Portable View", sections_json, layout="two_column")
+→ THEN call render_smart_template(template_id) to generate the DOCX
 
 ### STEP 2: If they're vague, show available fields first
 Call `get_entity_fields(entity_type)` to show what's available.
@@ -1236,52 +1305,64 @@ User: "I need a portable view for RFIs"
 When they ask for changes, use `modify_existing_template`:
 - "remove the logo" → modify_existing_template(id, "toggle_logo", '{"show": false}')
 - "make Subject bold" → modify_existing_template(id, "set_bold", '{"fields": ["Subject"]}')
+→ THEN call render_smart_template(template_id) to regenerate the DOCX
 
-### STEP 4: Render when ready
-Call `render_smart_template(template_id)` to generate the DOCX.
+### STEP 4: Always render after creating or modifying
+Call `render_smart_template(template_id)` to generate the downloadable DOCX.
 
-## EXAMPLE - ONE-SHOT TEMPLATE CREATION
+## EXAMPLE - TEMPLATE CREATION (CORRECT)
 
-User: "Build me an RFI template with Number, Subject, Question, Response. Two columns, make Subject bold."
+User: "Create a portable view for RFIs"
 
-You: [Call build_custom_template immediately]
-```
-build_custom_template(
-    entity_type="RFI",
-    name="RFI Portable View",
-    sections_json='[{"type": "header", "fields": ["Number", "Subject"]}, {"type": "detail", "fields": ["Question", "Response"], "formatting": {"bold_fields": ["Subject"], "columns": 2}}]',
-    layout="two_column"
-)
-```
+✅ CORRECT: Call build_custom_template("RFI", "RFI View", sections_json)
+            Then call render_smart_template(template_id)
+            
+Result: DOCX with header showing `[Attribute(RFI.Number)]` and `[Attribute(RFI.Subject)]`
+        NO dark blue banner. NO static "RFI View" text as title.
+        The document title IS the placeholder.
 
-Response: "✅ Created your RFI template (pv-abc123):
-- Header: Number, Subject  
-- Detail: Question, Response (2 columns)
-- Subject in bold
+❌ WRONG: Call generate_report(title="RFI Portable View Template", markdown_content="...")
+          This creates an ANALYTICS REPORT with static title banner - NOT a template!
 
-**Download:** [RFI_Portable_View.docx](/reports/pv-abc123.docx)
+## EXAMPLE - ANALYTICS REPORT (CORRECT)
 
-Want any changes?"
+User: "Show me all overdue RFIs" or "Create a report of contract spending"
+
+✅ CORRECT: Query data, then call generate_report(title="Overdue RFIs Report", markdown_content=...)
+            This IS an analytics report with real values.
+
+## QUICK REFERENCE
+
+| User Says                    | Tool to Use                                    |
+|------------------------------|------------------------------------------------|
+| "create template for..."     | build_custom_template → render_smart_template  |
+| "portable view for..."       | build_custom_template → render_smart_template  |
+| "design a PV..."             | build_custom_template → render_smart_template  |
+| "show me all..."             | query_entities → generate_report               |
+| "create a report of..."      | query_entities → generate_report               |
+| "summarize..."               | query_entities → generate_report               |
 
 ## TOOLS REFERENCE
 
-### Interactive Template Building (PREFERRED)
+### Portable View Templates (for reusable Kahua templates)
 - **get_entity_fields(entity_type)**: Show user what fields are available
 - **build_custom_template(...)**: Build template with user-specified fields and formatting
 - **modify_existing_template(template_id, operation, config_json)**: Change templates based on feedback
 - **preview_template_structure(template_id)**: Show current template structure
-- **render_smart_template(template_id)**: Generate the final DOCX
+- **render_smart_template(template_id)**: Generate the final DOCX with Kahua placeholders
 
 ### Quick Template (when user wants something fast)
 - **smart_compose_template(entity_type, archetype, user_intent)**: Auto-generate with archetype
 - **list_template_archetypes()**: See available design patterns
+
+### Analytics Reports (for one-time reports with actual data)
+- **generate_report(title, markdown_content)**: Create Word reports with actual values (NOT for templates)
 
 ### Data Access
 - **find_project(search_term)**: Find project by name
 - **count_entities(entity_def)**: Count records
 - **query_entities(entity_def, ...)**: Get entity data
 - **get_entity_schema(entity_def)**: See entity fields from live data
-- **generate_report(title, markdown_content)**: Create Word reports
 
 ## Entity Aliases
 - "rfi" → kahua_AEC_RFI.RFI
@@ -1311,6 +1392,9 @@ def create_agent():
     llm = create_llm()
     llm_with_tools = llm.bind_tools(all_tools)
     
+    # Max messages to keep in context (prevent token overflow)
+    MAX_MESSAGES = 30  # Keep recent conversation manageable
+    
     # Agent node - calls LLM
     def agent_node(state: AgentState):
         messages = state["messages"]
@@ -1318,6 +1402,16 @@ def create_agent():
         # Ensure system message is first
         if not messages or not isinstance(messages[0], SystemMessage):
             messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
+        
+        # Truncate message history if too long (keep system + recent messages)
+        if len(messages) > MAX_MESSAGES:
+            system_msg = messages[0] if isinstance(messages[0], SystemMessage) else None
+            recent_messages = messages[-(MAX_MESSAGES - 1):] if system_msg else messages[-MAX_MESSAGES:]
+            if system_msg:
+                messages = [system_msg] + recent_messages
+            else:
+                messages = recent_messages
+            log.info(f"Truncated message history to {len(messages)} messages")
         
         response = llm_with_tools.invoke(messages)
         return {"messages": [response]}
@@ -1359,6 +1453,24 @@ def get_agent():
     return _agent
 
 
+# Session storage for recovery
+_session_checkpointers: Dict[str, MemorySaver] = {}
+
+
+def reset_session(session_id: str = "default") -> bool:
+    """
+    Reset a corrupted session to allow fresh conversation.
+    Call this if a session gets into a bad state with pending tool calls.
+    
+    Returns True if session was reset.
+    """
+    global _agent
+    # Easiest way is to clear and recreate the agent with fresh memory
+    _agent = None
+    log.info(f"Session {session_id} reset - agent will be recreated")
+    return True
+
+
 async def chat(message: str, session_id: str = "default") -> str:
     """
     Send a message to the agent and get a response.
@@ -1374,17 +1486,36 @@ async def chat(message: str, session_id: str = "default") -> str:
     
     config = {"configurable": {"thread_id": session_id}}
     
-    result = await agent.ainvoke(
-        {"messages": [HumanMessage(content=message)]},
-        config=config
-    )
-    
-    # Get the last AI message
-    for msg in reversed(result["messages"]):
-        if isinstance(msg, AIMessage):
-            return msg.content
-    
-    return "No response generated."
+    try:
+        result = await agent.ainvoke(
+            {"messages": [HumanMessage(content=message)]},
+            config=config
+        )
+        
+        # Get the last AI message
+        for msg in reversed(result["messages"]):
+            if isinstance(msg, AIMessage):
+                return msg.content
+        
+        return "No response generated."
+    except Exception as e:
+        error_str = str(e)
+        # Check for the specific tool_use/tool_result mismatch error
+        if "tool_use ids were found without tool_result" in error_str:
+            log.warning(f"Session {session_id} corrupted (pending tool calls), resetting...")
+            reset_session(session_id)
+            # Retry with fresh agent
+            agent = get_agent()
+            result = await agent.ainvoke(
+                {"messages": [HumanMessage(content=message)]},
+                config=config
+            )
+            for msg in reversed(result["messages"]):
+                if isinstance(msg, AIMessage):
+                    return msg.content
+            return "No response generated."
+        else:
+            raise
 
 
 def chat_sync(message: str, session_id: str = "default") -> str:
@@ -1393,16 +1524,33 @@ def chat_sync(message: str, session_id: str = "default") -> str:
     
     config = {"configurable": {"thread_id": session_id}}
     
-    result = agent.invoke(
-        {"messages": [HumanMessage(content=message)]},
-        config=config
-    )
-    
-    for msg in reversed(result["messages"]):
-        if isinstance(msg, AIMessage):
-            return msg.content
-    
-    return "No response generated."
+    try:
+        result = agent.invoke(
+            {"messages": [HumanMessage(content=message)]},
+            config=config
+        )
+        
+        for msg in reversed(result["messages"]):
+            if isinstance(msg, AIMessage):
+                return msg.content
+        
+        return "No response generated."
+    except Exception as e:
+        error_str = str(e)
+        if "tool_use ids were found without tool_result" in error_str:
+            log.warning(f"Session {session_id} corrupted, resetting...")
+            reset_session(session_id)
+            agent = get_agent()
+            result = agent.invoke(
+                {"messages": [HumanMessage(content=message)]},
+                config=config
+            )
+            for msg in reversed(result["messages"]):
+                if isinstance(msg, AIMessage):
+                    return msg.content
+            return "No response generated."
+        else:
+            raise
 
 
 # ============== Test ==============

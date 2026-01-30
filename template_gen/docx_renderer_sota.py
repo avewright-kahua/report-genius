@@ -281,7 +281,10 @@ def set_row_height(row, height: Pt, rule: str = "exact") -> None:
 def remove_table_borders(table: Table) -> None:
     """Remove all borders from table."""
     tbl = table._tbl
-    tblPr = tbl.get_or_add_tblPr()
+    tblPr = tbl.tblPr
+    if tblPr is None:
+        tblPr = parse_xml(f'<w:tblPr {nsdecls("w")}/>')
+        tbl.insert(0, tblPr)
     tblBorders = parse_xml(
         f'''<w:tblBorders {nsdecls("w")}>
             <w:top w:val="nil"/>
@@ -298,7 +301,10 @@ def remove_table_borders(table: Table) -> None:
 def set_table_width(table: Table, width_pct: int = 100) -> None:
     """Set table width as percentage."""
     tbl = table._tbl
-    tblPr = tbl.get_or_add_tblPr()
+    tblPr = tbl.tblPr
+    if tblPr is None:
+        tblPr = parse_xml(f'<w:tblPr {nsdecls("w")}/>')
+        tbl.insert(0, tblPr)
     tblW = parse_xml(f'<w:tblW {nsdecls("w")} w:w="{width_pct * 50}" w:type="pct"/>')
     tblPr.append(tblW)
 
@@ -510,13 +516,17 @@ class SOTADocxRenderer:
             gridCols[0].set(oxml_qn('w:w'), '2000')
             gridCols[1].set(oxml_qn('w:w'), '7000')
         
-        # Logo cell
+        # Logo cell - make the placeholder clearly visible
         logo_p = logo_cell.paragraphs[0]
         logo_token = "[CompanyLogo(Height=60,Width=60)]"
         run = logo_p.add_run(logo_token)
-        run.font.size = Pt(self.tokens.SIZE_BODY)
+        run.font.size = Pt(12)  # Larger font for visibility
+        run.font.bold = True
+        run.font.color.rgb = RGBColor(*hex_to_rgb(self.tokens.COLOR_MUTED))  # Gray to indicate placeholder
         if position == "right":
             logo_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        else:
+            logo_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
         set_cell_vertical_alignment(logo_cell, "center")
         
         # Title cell
@@ -763,7 +773,10 @@ class SOTADocxRenderer:
         
         # Position on right side
         tbl = totals_table._tbl
-        tblPr = tbl.get_or_add_tblPr()
+        tblPr = tbl.tblPr
+        if tblPr is None:
+            tblPr = parse_xml(f'<w:tblPr {nsdecls("w")}/>')
+            tbl.insert(0, tblPr)
         jc = parse_xml(f'<w:jc {nsdecls("w")} w:val="right"/>')
         tblPr.append(jc)
         

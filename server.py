@@ -20,7 +20,7 @@ REPORTS_DIR.mkdir(exist_ok=True)
 load_dotenv()
 
 # Use LangGraph agent (Claude via Anthropic SDK)
-from langgraph_agent import chat as langgraph_chat, get_agent
+from langgraph_agent import chat as langgraph_chat, get_agent, reset_session
 import logging
 
 # Template builder API router
@@ -571,6 +571,15 @@ async def delete_query(query_id: str) -> Dict[str, Any]:
 
 # ============== Chat API ==============
 
+
+@app.post("/api/chat/reset")
+async def reset_chat_session(req: ChatRequest = None) -> Dict[str, Any]:
+    """Reset a chat session if it gets corrupted (e.g., pending tool calls)."""
+    session_id = (req.session_id if req else None) or "web"
+    reset_session(session_id)
+    return {"status": "ok", "message": f"Session {session_id} reset"}
+
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest) -> Dict[str, Any]:
     log = logging.getLogger("uvicorn.error")
@@ -591,7 +600,6 @@ async def chat(req: ChatRequest) -> Dict[str, Any]:
     return {
         "final_output": response,
     }
-
 
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
