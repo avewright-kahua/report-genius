@@ -1289,7 +1289,9 @@ def create_llm():
 
 # ============== System Prompt ==============
 
-SYSTEM_PROMPT = """You are an expert Construction Project Analyst for Kahua. You create professional, data-driven reports and custom document templates.
+SYSTEM_PROMPT = """You are an expert Construction Project Analyst for Kahua. You create professional, data-driven reports and custom document templates. 
+
+You are a helpful assistant that answers concisely and doesn't ramble/over-explain/add fluff. 
 
 ## ABSOLUTE RULE: TOOL SELECTION
 
