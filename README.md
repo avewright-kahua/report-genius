@@ -5,7 +5,7 @@ AI-powered portable view template system for Kahua construction management. Enab
 ## Quick Start
 
 ```bash
-# Install dependencies
+# Install as package (recommended)
 pip install -e .
 
 # Set up environment
@@ -16,37 +16,63 @@ cp .env.example .env
 python server.py
 
 # Start the frontend (separate terminal)
-cd web
-npm install
-npm run dev
+cd web && npm install && npm run dev
 ```
 
-## Project Structure
+## Package Structure
 
 ```
 report-genius/
-├── src/report_genius/          # New Python package (in development)
-│   ├── templates/              # Template schema and archetypes
-│   ├── rendering/              # DOCX generation
-│   ├── agent/                  # LangGraph agent modules
-│   ├── api/                    # FastAPI endpoint modules
-│   └── models/                 # Kahua entity definitions
-├── template_gen/               # Template generation system
-│   ├── core/                   # Design system and composer
-│   ├── models/                 # Entity schema definitions
-│   └── api/                    # Alternative API server
-├── web/                        # React frontend
-├── docs/                       # Documentation
-├── data/pv_templates/          # Template storage
+├── src/report_genius/              # Main Python package (CANONICAL)
+│   ├── __init__.py                 # Package exports
+│   ├── templates/                  # Template schema and archetypes
+│   │   ├── schema.py               # CANONICAL schema definitions
+│   │   └── archetypes.py           # Design archetypes
+│   ├── rendering/                  # DOCX generation
+│   │   └── docx.py                 # SOTA renderer
+│   ├── models/                     # Kahua entity models
+│   │   ├── common.py               # Shared types
+│   │   ├── rfi.py                  # RFI model
+│   │   ├── submittal.py            # Submittal model
+│   │   └── ...                     # Other entity models
+│   ├── agent/                      # LangGraph agent modules
+│   └── api/                        # FastAPI endpoint modules
 │
-│ # Root-level application files
-├── server.py                   # Main API entrypoint
-├── langgraph_agent.py          # LangGraph agent implementation
-├── unified_templates.py        # Template system bridge
-├── template_builder_api.py     # Template builder API routes
-├── pv_template_*.py            # Portable view template modules
-├── pyproject.toml              # Python package config
+├── template_gen/                   # Legacy (being migrated to src/)
+├── web/                            # React frontend
+├── docs/                           # Documentation
+├── data/templates/                 # Template storage
+│
+├── server.py                       # Main API entrypoint
+├── langgraph_agent.py              # LangGraph agent
+├── pyproject.toml                  # Package config
 └── README.md
+```
+
+## Usage
+
+### Python Package
+
+```python
+from report_genius import (
+    PortableViewTemplate,
+    Section,
+    SectionType,
+    DocxRenderer,
+)
+from report_genius.models import RFIModel
+from report_genius.templates import create_detail_section
+
+# Create a template
+template = PortableViewTemplate(
+    name="My RFI Template",
+    entity_def="kahua_AEC_RFI.RFI",
+    sections=[...]
+)
+
+# Render to DOCX
+renderer = DocxRenderer(template)
+renderer.render_to_file("output.docx")
 ```
 
 ## Template Archetypes
@@ -76,12 +102,17 @@ report-genius/
 ## API Endpoints
 
 ```
-GET  /api/archetypes              # List available archetypes
-GET  /api/entities                # List supported entity types
-POST /api/compose                 # Create template from archetype
-GET  /api/render-docx/{id}        # Render template to DOCX
-POST /api/agent/session           # Create agent session
-POST /api/agent/{id}/execute      # Execute agent tool
+GET  /health                        # Health check
+POST /chat                          # Chat with agent
+
+GET  /api/pv-templates              # List templates
+GET  /api/pv-templates/{id}         # Get template
+POST /api/pv-templates/{id}/render  # Render to DOCX
+
+GET  /api/archetypes                # List design archetypes
+POST /api/compose                   # Create from archetype
+
+GET  /reports/{filename}            # Download rendered report
 ```
 
 ## Kahua Placeholder Syntax
@@ -89,28 +120,40 @@ POST /api/agent/{id}/execute      # Execute agent tool
 Templates use Kahua's placeholder syntax for data binding:
 
 ```
-[Attribute(Number)]                        # Simple attribute
-[Currency(Amount)]                         # Currency formatting
-[Date(CreatedOn,format=MM/dd/yyyy)]        # Date formatting
-[Boolean(IsApproved,true=Yes,false=No)]    # Boolean
+[Attribute(Number)]                                    # Simple attribute
+[Currency(Source=Attribute,Path=Amount,Format="C2")]   # Currency
+[Date(Source=Attribute,Path=DueDate,Format="d")]       # Date
+[Boolean(IsApproved,true=Yes,false=No)]                # Boolean
+[StartTable(Name=Items,Source=Attribute,Path=Items)]   # Table start
+[EndTable]                                             # Table end
 ```
 
 ## Development
 
 ```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
 # Run tests
 pytest
 
-# Type checking
-mypy src/
+# Lint & format
+ruff check . && ruff format .
 
-# Linting
-ruff check src/
+# Type check
+mypy src/report_genius
 ```
 
-## Documentation
+## Migration Notes (v0.2.0)
 
-See [docs/](docs/) for detailed documentation on Kahua portable view templates.
+The codebase has been consolidated:
+
+- **Import from `report_genius`** instead of legacy modules
+- `pv_template_schema` → `report_genius.templates`
+- `template_gen.template_schema` → `report_genius.templates`
+- Entity models → `report_genius.models`
+
+Legacy imports show deprecation warnings but continue to work.
 
 ## License
 

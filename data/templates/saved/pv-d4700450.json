@@ -1,0 +1,748 @@
+{
+  "id": "pv-d4700450",
+  "name": "TVUSD Change Order",
+  "description": null,
+  "version": "1.0",
+  "entity_def": "kahua_AEC_ChangeOrder.ChangeOrder",
+  "layout": {
+    "orientation": "portrait",
+    "margin_top": 0.75,
+    "margin_bottom": 0.75,
+    "margin_left": 0.75,
+    "margin_right": 0.75,
+    "page_size": "letter",
+    "columns": 1,
+    "page_header": null,
+    "page_footer": {
+      "left_text": null,
+      "center_text": "TVUSD Change Order Form \t\t\t2 of 2",
+      "right_text": null,
+      "include_page_number": true,
+      "page_number_format": "Page {page} of {total}",
+      "font_size": 9,
+      "show_on_first_page": true
+    }
+  },
+  "style": {
+    "primary_color": "#0000FF",
+    "secondary_color": "#0369a1",
+    "accent_color": "#059669",
+    "text_color": "#1e293b",
+    "muted_color": "#64748b",
+    "font_family": "Calibri",
+    "heading_font": "Calibri Light",
+    "mono_font": "Consolas",
+    "title_size": 18,
+    "heading_size": 12,
+    "body_size": 10,
+    "small_size": 8,
+    "table_header_bg": "#0f172a",
+    "table_header_fg": "#ffffff",
+    "table_alt_row_bg": "#f8fafc",
+    "table_border_color": "#e2e8f0",
+    "section_spacing": 0.25
+  },
+  "sections": [
+    {
+      "type": "detail",
+      "title": "Architect",
+      "order": 0,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "ChangesInScopeOfWork",
+            "label": "CHANGES IN SCOPE OF WORK",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          },
+          {
+            "path": "EndOfChangeOrderNo",
+            "label": "END OF CHANGE ORDER NO",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          }
+        ],
+        "layout": "grid",
+        "columns": 1,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "table",
+      "title": null,
+      "order": 1,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "Items",
+        "columns": [
+          {
+            "field": {
+              "path": "CHANGE ORDER",
+              "label": "CHANGE ORDER",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null,
+        "sort_by": null,
+        "sort_direction": "asc",
+        "group_by": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "table",
+      "title": null,
+      "order": 2,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "Items",
+        "columns": [
+          {
+            "field": {
+              "path": "PROJECT:",
+              "label": "PROJECT:",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "",
+              "label": "",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "CHANGE ORDER NO:",
+              "label": "CHANGE ORDER NO:",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "CHANGE ORDER NO:",
+              "label": "CHANGE ORDER NO:",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "",
+              "label": "",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null,
+        "sort_by": null,
+        "sort_direction": "asc",
+        "group_by": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "table",
+      "title": null,
+      "order": 3,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "Items",
+        "columns": [
+          {
+            "field": {
+              "path": "PROJECT:",
+              "label": "PROJECT:",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "",
+              "label": "",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null,
+        "sort_by": null,
+        "sort_direction": "asc",
+        "group_by": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "table",
+      "title": null,
+      "order": 4,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "Items",
+        "columns": [
+          {
+            "field": {
+              "path": "ATTACHMENT TO CHANGE ORDER:",
+              "label": "ATTACHMENT TO CHANGE ORDER:",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null,
+        "sort_by": null,
+        "sort_direction": "asc",
+        "group_by": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "table",
+      "title": null,
+      "order": 5,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "Items",
+        "columns": [
+          {
+            "field": {
+              "path": "",
+              "label": "",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "PCO#",
+              "label": "PCO#",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "Date",
+              "label": "Date",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "",
+              "label": "",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null,
+        "sort_by": null,
+        "sort_direction": "asc",
+        "group_by": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "table",
+      "title": null,
+      "order": 6,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "Items",
+        "columns": [
+          {
+            "field": {
+              "path": "",
+              "label": "",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "PCO#",
+              "label": "PCO#",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "Date",
+              "label": "Date",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "",
+              "label": "",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null,
+        "sort_by": null,
+        "sort_direction": "asc",
+        "group_by": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "table",
+      "title": null,
+      "order": 7,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "Items",
+        "columns": [
+          {
+            "field": {
+              "path": "",
+              "label": "",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "PCO#",
+              "label": "PCO#",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "Date",
+              "label": "Date",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "",
+              "label": "",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null,
+        "sort_by": null,
+        "sort_direction": "asc",
+        "group_by": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "table",
+      "title": null,
+      "order": 8,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "Items",
+        "columns": [
+          {
+            "field": {
+              "path": "",
+              "label": "",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "PCO#",
+              "label": "PCO#",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "Date",
+              "label": "Date",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "",
+              "label": "",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null,
+        "sort_by": null,
+        "sort_direction": "asc",
+        "group_by": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "table",
+      "title": null,
+      "order": 9,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "Items",
+        "columns": [
+          {
+            "field": {
+              "path": "",
+              "label": "",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "PCO#",
+              "label": "PCO#",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "Date",
+              "label": "Date",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "",
+              "label": "",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null,
+        "sort_by": null,
+        "sort_direction": "asc",
+        "group_by": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    }
+  ],
+  "created_at": "2026-02-02T13:40:00.692650",
+  "updated_at": null,
+  "created_by": null,
+  "tags": [],
+  "source_type": "imported"
+}

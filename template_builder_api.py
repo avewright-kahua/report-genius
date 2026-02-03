@@ -17,11 +17,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Template infrastructure
+# Template infrastructure - uses OLD dataclass schema (for .from_dict/.to_dict compatibility)
+# TODO: Migrate to new Pydantic schema once endpoints are updated
 from pv_template_schema import (
-    PortableTemplate, Section, SectionType, FieldMapping, FieldFormat,
-    HeaderSection, DetailSection, TableSection, TextSection, ColumnDef,
-    Alignment, PageLayout, StyleConfig
+    PortableTemplate,
+    Section,
+    SectionType,
+    FieldMapping,
+    FieldFormat,
+    HeaderSection,
+    DetailSection,
+    TableSection,
+    TextSection,
+    ColumnDef,
+    Alignment,
+    PageLayout,
+    StyleConfig,
 )
 from pv_template_analyzer import analyze_document_description, refine_template
 from pv_template_renderer import TemplateRenderer
@@ -30,9 +41,8 @@ log = logging.getLogger("template_builder_api")
 
 router = APIRouter(prefix="/api/template", tags=["Template Builder"])
 
-# Storage paths
-PV_TEMPLATES_DIR = Path(__file__).parent / "pv_templates" / "saved"
-PV_TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+# Storage paths - use canonical config
+from report_genius.config import TEMPLATES_DIR as PV_TEMPLATES_DIR
 
 # ============== Kahua API Config ==============
 

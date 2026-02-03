@@ -114,7 +114,8 @@ async def get_report(filename: str):
 
 # ============== Portable View Template API ==============
 
-PV_TEMPLATES_DIR = Path(__file__).parent / "pv_templates" / "saved"
+# Use canonical path from config
+from report_genius.config import TEMPLATES_DIR as PV_TEMPLATES_DIR
 
 @app.get("/api/pv-templates")
 async def list_pv_templates() -> Dict[str, Any]:
@@ -181,8 +182,9 @@ class RenderPVTemplateRequest(BaseModel):
 @app.post("/api/pv-templates/{template_id}/render")
 async def render_pv_template(template_id: str, req: RenderPVTemplateRequest) -> Dict[str, Any]:
     """Render a portable view template with entity data to a Word document."""
+    # Support both old (dataclass) and new (Pydantic) templates
     from pv_template_schema import PortableTemplate
-    from pv_template_renderer import TemplateRenderer
+    from report_genius.rendering import LegacyRenderer
     
     # Security check
     if ".." in template_id or "/" in template_id or "\\" in template_id:
@@ -210,8 +212,8 @@ async def render_pv_template(template_id: str, req: RenderPVTemplateRequest) -> 
                     entity_data = s["entities"][0]
                     break
     
-    # Render to document
-    renderer = TemplateRenderer(output_dir=REPORTS_DIR)
+    # Render to document using legacy renderer for old templates
+    renderer = LegacyRenderer(output_dir=REPORTS_DIR)
     output_path, doc_bytes = renderer.render(template, entity_data)
     
     return {
@@ -332,6 +334,309 @@ async def list_uploads() -> Dict[str, Any]:
                 "url": f"/uploads/{f.name}"
             })
     return {"files": files, "count": len(files)}
+
+
+# ============== Template Upload & Token Analysis API ==============
+
+from docx_token_injector import analyze_and_inject, add_logo_placeholder, add_timestamp_token
+
+
+class TemplateAnalyzeRequest(BaseModel):
+    """Request body for template analysis options."""
+    entity_def: str = ""
+    auto_inject: bool = False
+    add_logo: bool = False
+    add_timestamp: bool = False
+
+
+@app.post("/api/template/upload-analyze")
+async def upload_and_analyze_template(
+    file: UploadFile = FastAPIFile(...),
+    entity_def: str = "",
+    auto_inject: bool = False,
+    add_logo: bool = False,
+    add_timestamp: bool = False
+) -> Dict[str, Any]:
+    """
+    Upload a DOCX template and analyze it for token injection.
+    
+    This endpoint accepts a Word document that may have placeholder patterns like:
+    - "ID: " (label with trailing whitespace)
+    - "Status: ______" (label with underscores)
+    - "Date: [blank]" (label with placeholder text)
+    
+    The AI will detect these patterns and suggest appropriate Kahua tokens.
+    
+    Args:
+        file: The DOCX file to analyze
+        entity_def: Target Kahua entity (e.g., "kahua_AEC_RFI.RFI")
+        auto_inject: If true, automatically inject suggested tokens
+        add_logo: If true, add a logo placeholder to the header
+        add_timestamp: If true, add a timestamp to the footer
+        
+    Returns:
+        Analysis results with detected placeholders and optionally the modified document
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith(('.docx', '.doc')):
+            return {
+                "status": "error",
+                "error": "Only Word documents (.docx) are supported"
+            }
+        
+        # Read file content
+        content = await file.read()
+        
+        # Analyze the document
+        result = analyze_and_inject(
+            doc_bytes=content,
+            entity_def=entity_def,
+            auto_inject=auto_inject
+        )
+        
+        # Apply optional enhancements to modified document or original
+        modified_doc = result.get('modified_document', content) if auto_inject else content
+        
+        if add_logo:
+            modified_doc = add_logo_placeholder(modified_doc, position='header')
+            result['analysis']['changes_made'] = result.get('analysis', {}).get('changes_made', []) + ['Added logo placeholder to header']
+        
+        if add_timestamp:
+            modified_doc = add_timestamp_token(modified_doc, position='footer')
+            result['analysis']['changes_made'] = result.get('analysis', {}).get('changes_made', []) + ['Added timestamp to footer']
+        
+        # Save the original and/or modified document
+        base_url = os.getenv("REPORT_BASE_URL", "http://localhost:8000")
+        original_path = UPLOADS_DIR / f"original_{file.filename}"
+        original_path.write_bytes(content)
+        
+        response = {
+            "status": "ok",
+            "original_filename": file.filename,
+            "original_url": f"{base_url}/uploads/original_{file.filename}",
+            "analysis": result['analysis']
+        }
+        
+        # If we have modifications, save and return the modified doc
+        if auto_inject or add_logo or add_timestamp:
+            modified_filename = f"tokenized_{file.filename}"
+            modified_path = UPLOADS_DIR / modified_filename
+            modified_path.write_bytes(modified_doc)
+            
+            response["modified_filename"] = modified_filename
+            response["modified_url"] = f"{base_url}/uploads/{modified_filename}"
+            response["tokens_injected"] = result.get('injection', {}).get('tokens_injected', 0)
+            if add_logo or add_timestamp:
+                response["aesthetics_added"] = []
+                if add_logo:
+                    response["aesthetics_added"].append("company_logo")
+                if add_timestamp:
+                    response["aesthetics_added"].append("timestamp")
+        
+        return response
+        
+    except Exception as e:
+        logging.getLogger("uvicorn.error").error(f"Template analysis failed: {e}", exc_info=True)
+        return {"status": "error", "error": str(e)}
+
+
+@app.post("/api/template/inject-tokens")
+async def inject_tokens_into_template(
+    file: UploadFile = FastAPIFile(...),
+    entity_def: str = "",
+    field_mappings: str = ""  # JSON string of custom mappings
+) -> Dict[str, Any]:
+    """
+    Inject Kahua tokens into a template based on analysis or custom mappings.
+    
+    This is the action endpoint after reviewing the analysis from upload-analyze.
+    
+    Args:
+        file: The DOCX file to modify
+        entity_def: Target Kahua entity
+        field_mappings: Optional JSON string of custom field mappings to override defaults
+                       Format: [{"label": "ID", "path": "Number", "format": "text"}, ...]
+    """
+    try:
+        import json as json_module
+        
+        content = await file.read()
+        
+        # Parse custom mappings if provided
+        custom_mappings = None
+        if field_mappings:
+            try:
+                custom_mappings = json_module.loads(field_mappings)
+            except json_module.JSONDecodeError:
+                return {"status": "error", "error": "Invalid field_mappings JSON"}
+        
+        # Analyze and inject
+        result = analyze_and_inject(
+            doc_bytes=content,
+            entity_def=entity_def,
+            auto_inject=True,
+            schema_fields=custom_mappings
+        )
+        
+        if not result.get('injection', {}).get('success'):
+            return {
+                "status": "error",
+                "error": result.get('injection', {}).get('error', 'Injection failed')
+            }
+        
+        # Save modified document
+        base_url = os.getenv("REPORT_BASE_URL", "http://localhost:8000")
+        modified_filename = f"tokenized_{file.filename}"
+        modified_path = UPLOADS_DIR / modified_filename
+        modified_path.write_bytes(result['modified_document'])
+        
+        return {
+            "status": "ok",
+            "filename": modified_filename,
+            "url": f"{base_url}/uploads/{modified_filename}",
+            "tokens_injected": result['injection']['tokens_injected'],
+            "changes": result['injection']['changes_made'],
+            "warnings": result['injection']['warnings']
+        }
+        
+    except Exception as e:
+        logging.getLogger("uvicorn.error").error(f"Token injection failed: {e}", exc_info=True)
+        return {"status": "error", "error": str(e)}
+
+
+# ============== Agentic Template Completion API ==============
+
+from agentic_template_analyzer import analyze_and_convert, analyze_document
+from report_genius.templates import PortableViewTemplate as TGTemplate
+from report_genius.rendering import DocxRenderer as SOTADocxRenderer
+
+
+@app.post("/api/template/complete")
+async def complete_template(
+    file: UploadFile = FastAPIFile(...),
+    entity_def: str = "",
+    template_name: str = ""
+) -> Dict[str, Any]:
+    """
+    Agentic template completion: analyze and convert an uploaded DOCX to a full template.
+    
+    This endpoint:
+    1. Parses document structure (sections, lists, tables, headers)
+    2. Detects blank/placeholder patterns
+    3. Extracts styling (fonts, colors, alignment)
+    4. Generates a complete PortableViewTemplate with all features
+    5. Can be rendered with page headers, footers, lists, etc.
+    
+    Args:
+        file: The DOCX file to analyze and complete
+        entity_def: Target Kahua entity (e.g., "kahua_AEC_RFI.RFI")
+        template_name: Optional name for the generated template
+        
+    Returns:
+        Complete template specification with download capability
+    """
+    try:
+        if not file.filename.lower().endswith(('.docx', '.doc')):
+            return {"status": "error", "error": "Only Word documents (.docx) supported"}
+        
+        content = await file.read()
+        name = template_name or Path(file.filename).stem
+        
+        # Analyze and convert
+        result = analyze_and_convert(content, entity_def or "kahua_AEC_RFI.RFI", name)
+        
+        if result.get('status') != 'ok':
+            return result
+        
+        # Save template JSON
+        template = TGTemplate.model_validate(result['template'])
+        PV_TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+        json_path = PV_TEMPLATES_DIR / f"{template.id}.json"
+        json_path.write_text(template.model_dump_json(indent=2))
+        
+        # Also save original file
+        original_path = UPLOADS_DIR / f"original_{file.filename}"
+        original_path.write_bytes(content)
+        
+        base_url = os.getenv("REPORT_BASE_URL", "http://localhost:8000")
+        
+        return {
+            "status": "ok",
+            "template_id": template.id,
+            "template_name": template.name,
+            "entity_def": template.entity_def,
+            "analysis": result['analysis'],
+            "sections_summary": result['sections_summary'],
+            "saved_to": str(json_path),
+            "original_url": f"{base_url}/uploads/original_{file.filename}",
+            "message": f"Template '{name}' created with {len(template.sections)} sections. Use /api/template/render/{template.id} to generate DOCX."
+        }
+        
+    except Exception as e:
+        logging.getLogger("uvicorn.error").error(f"Template completion failed: {e}", exc_info=True)
+        return {"status": "error", "error": str(e)}
+
+
+@app.get("/api/template/render/{template_id}")
+async def render_template_endpoint(
+    template_id: str,
+    output_name: str = None
+) -> Dict[str, Any]:
+    """
+    Render a completed template to DOCX.
+    
+    Args:
+        template_id: ID from the /api/template/complete endpoint
+        output_name: Optional custom filename
+        
+    Returns:
+        Download URL for the rendered document
+    """
+    try:
+        json_path = PV_TEMPLATES_DIR / f"{template_id}.json"
+        
+        if not json_path.exists():
+            raise HTTPException(status_code=404, detail=f"Template {template_id} not found")
+        
+        template = TGTemplate.model_validate_json(json_path.read_text())
+        
+        # Ensure page footer with page numbers
+        if not template.layout.page_footer:
+            from report_genius.templates import PageHeaderFooterConfig
+            template.layout.page_footer = PageHeaderFooterConfig(
+                include_page_number=True,
+                page_number_format="Page {page} of {total}",
+                font_size=9,
+            )
+        
+        # Render
+        renderer = SOTADocxRenderer(template)
+        doc_bytes = renderer.render_to_bytes()
+        
+        # Save
+        reports_dir = Path(__file__).parent / "reports"
+        reports_dir.mkdir(exist_ok=True)
+        
+        filename = output_name or template_id
+        docx_path = reports_dir / f"{filename}.docx"
+        docx_path.write_bytes(doc_bytes)
+        
+        base_url = os.getenv("REPORT_BASE_URL", "http://localhost:8000")
+        
+        return {
+            "status": "ok",
+            "filename": docx_path.name,
+            "download_url": f"{base_url}/reports/{docx_path.name}",
+            "template_name": template.name,
+            "sections_rendered": len(template.sections),
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.getLogger("uvicorn.error").error(f"Template render failed: {e}", exc_info=True)
+        return {"status": "error", "error": str(e)}
 
 
 # ============== Template Management API ==============
@@ -682,10 +987,9 @@ async def smart_compose_template(req: SmartComposeRequest) -> Dict[str, Any]:
         )
         
         # Save template
-        output_dir = Path(__file__).parent / "pv_templates" / "saved"
-        output_dir.mkdir(parents=True, exist_ok=True)
+        PV_TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
         
-        json_path = output_dir / f"{template.id}.json"
+        json_path = PV_TEMPLATES_DIR / f"{template.id}.json"
         json_path.write_text(template.model_dump_json(indent=2))
         
         return {
@@ -701,15 +1005,14 @@ async def smart_compose_template(req: SmartComposeRequest) -> Dict[str, Any]:
 async def render_unified_template(template_id: str) -> Dict[str, Any]:
     """Render a unified template to DOCX with Kahua syntax."""
     from unified_templates import get_unified_system
-    from template_gen.template_schema import PortableViewTemplate
+    from report_genius.templates import PortableViewTemplate
     
     # Security check
     if ".." in template_id or "/" in template_id or "\\" in template_id:
         raise HTTPException(status_code=400, detail="Invalid template ID")
     
     # Find template
-    saved_dir = Path(__file__).parent / "pv_templates" / "saved"
-    json_path = saved_dir / f"{template_id}.json"
+    json_path = PV_TEMPLATES_DIR / f"{template_id}.json"
     
     if not json_path.exists():
         raise HTTPException(status_code=404, detail="Template not found")

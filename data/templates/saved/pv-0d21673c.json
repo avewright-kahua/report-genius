@@ -1,0 +1,569 @@
+{
+  "id": "pv-0d21673c",
+  "name": "Invoice Payment Summary",
+  "description": "Financial Report for InvoiceModel",
+  "version": "1.0",
+  "entity_def": "kahua.invoice",
+  "layout": {
+    "orientation": "portrait",
+    "margin_top": 0.75,
+    "margin_bottom": 0.75,
+    "margin_left": 0.75,
+    "margin_right": 0.75,
+    "page_size": "letter"
+  },
+  "style": {
+    "primary_color": "#0f172a",
+    "secondary_color": "#0369a1",
+    "accent_color": "#059669",
+    "text_color": "#1e293b",
+    "muted_color": "#64748b",
+    "font_family": "Calibri",
+    "heading_font": "Calibri Light",
+    "mono_font": "Consolas",
+    "title_size": 18,
+    "heading_size": 12,
+    "body_size": 10,
+    "small_size": 8,
+    "table_header_bg": "#0f172a",
+    "table_header_fg": "#ffffff",
+    "table_alt_row_bg": "#f8fafc",
+    "table_border_color": "#e2e8f0",
+    "section_spacing": 0.3
+  },
+  "sections": [
+    {
+      "type": "header",
+      "title": null,
+      "order": 0,
+      "condition": null,
+      "header_config": {
+        "title_template": "{Number}",
+        "subtitle_template": "{Description}",
+        "fields": [
+          {
+            "path": "ContractNumber",
+            "label": "Contract Number",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "VendorInvoiceNumber",
+            "label": "Vendor Invoice Number",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "show_labels": false,
+        "show_logo": true,
+        "logo_type": "company"
+      },
+      "detail_config": null,
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Summary",
+      "order": 1,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "TotalScheduledValue",
+            "label": "Total Scheduled Value",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "PreviousApplicationsTotal",
+            "label": "Previous Applications Total",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "TotalCompletedToDate",
+            "label": "Total Completed To Date",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "PreviousRetainageTotal",
+            "label": "Previous Retainage Total",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "TotalRetainageHeld",
+            "label": "Total Retainage Held",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "StoredMaterialsTotal",
+            "label": "Stored Materials Total",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "TaxTotal",
+            "label": "Tax Total",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "OriginalContractAmount",
+            "label": "Original Contract Amount",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "ApprovedChangesAmount",
+            "label": "Approved Changes Amount",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "CurrentContractAmount",
+            "label": "Current Contract Amount",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "RetainageRate",
+            "label": "Retainage Rate",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "CurrentRetainage",
+            "label": "Current Retainage",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "RetainageReleased",
+            "label": "Retainage Released",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "NetRetainage",
+            "label": "Net Retainage",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "TaxableAmount",
+            "label": "Taxable Amount",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "NonTaxableAmount",
+            "label": "Non Taxable Amount",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "GrossAmountDue",
+            "label": "Gross Amount Due",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "LessRetainage",
+            "label": "Less Retainage",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          },
+          {
+            "path": "NetAmountDue",
+            "label": "Net Amount Due",
+            "format": "currency",
+            "format_options": {
+              "decimals": 2,
+              "format": null,
+              "prefix": null,
+              "suffix": null,
+              "default": null,
+              "thousand_separator": true
+            },
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Parties",
+      "order": 2,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "ContractorContact",
+            "label": "Contractor Contact",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Schedule",
+      "order": 3,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "Date",
+            "label": "Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "DateSubmitted",
+            "label": "Date Submitted",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "DateApproved",
+            "label": "Date Approved",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "DatePaid",
+            "label": "Date Paid",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "DueDate",
+            "label": "Due Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "VendorInvoiceDate",
+            "label": "Vendor Invoice Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "table",
+      "title": "Items",
+      "order": 4,
+      "condition": {
+        "field": "Items",
+        "op": "not_empty",
+        "value": null
+      },
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "Items",
+        "columns": [
+          {
+            "field": {
+              "path": "Number",
+              "label": "Number",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left"
+            },
+            "width": 20,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "Description",
+              "label": "Description",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left"
+            },
+            "width": 35,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "Status",
+              "label": "Status",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left"
+            },
+            "width": 20,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "ScheduledValue",
+              "label": "Scheduled Value",
+              "format": "currency",
+              "format_options": {
+                "decimals": 2,
+                "format": null,
+                "prefix": null,
+                "suffix": null,
+                "default": null,
+                "thousand_separator": true
+              },
+              "alignment": "left"
+            },
+            "width": 15,
+            "alignment": "right",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "Notes",
+              "label": "Notes",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left"
+            },
+            "width": 20,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "ContractQuantity",
+              "label": "Contract Quantity",
+              "format": "number",
+              "format_options": null,
+              "alignment": "left"
+            },
+            "width": 20,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": true,
+        "subtotal_fields": [
+          "ScheduledValue"
+        ],
+        "row_condition": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    }
+  ],
+  "created_at": "2026-01-29T11:31:21.087958",
+  "updated_at": null,
+  "created_by": null,
+  "tags": [
+    "financial_report",
+    "invoicemodel"
+  ],
+  "source_type": "generated"
+}

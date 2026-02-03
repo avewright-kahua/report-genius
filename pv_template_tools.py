@@ -1,7 +1,18 @@
 """
 Portable View Template Agent Tools
 Tools for the AI agent to create, manage, and render portable templates.
+
+DEPRECATED: This module is not imported anywhere. 
+Use langgraph_agent.py tools or report_genius.agent instead.
 """
+
+import warnings
+warnings.warn(
+    "pv_template_tools is deprecated and not used. "
+    "Use langgraph_agent.py or report_genius.agent instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 import os
 import json

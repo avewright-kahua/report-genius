@@ -25,22 +25,25 @@ class SectionType(str, Enum):
     IMAGE = "image"         # Static or dynamic images
     DIVIDER = "divider"     # Visual separator
     SPACER = "spacer"       # Vertical whitespace
+    LIST = "list"           # Bulleted or numbered list
 
 
 class FieldFormat(str, Enum):
-    """Format types for field values."""
+    """Format types for field values matching Kahua token types."""
     
-    TEXT = "text"
-    CURRENCY = "currency"
-    NUMBER = "number"
-    DECIMAL = "decimal"
-    PERCENT = "percent"
-    DATE = "date"
-    DATETIME = "datetime"
-    BOOLEAN = "boolean"
-    PHONE = "phone"
-    EMAIL = "email"
-    URL = "url"
+    TEXT = "text"              # [Attribute(Path)]
+    CURRENCY = "currency"       # [Currency(Source=Attribute,Path=...,Format="C2")]
+    NUMBER = "number"           # [Number(Source=Attribute,Path=...,Format="N0")]
+    DECIMAL = "decimal"         # [Number(Source=Attribute,Path=...,Format="F2")]
+    PERCENT = "percent"         # [Number(Source=Attribute,Path=...,Format="P1")]
+    DATE = "date"               # [Date(Source=Attribute,Path=...,Format="d")]
+    DATETIME = "datetime"       # [Date(Source=Attribute,Path=...,Format="g")]
+    BOOLEAN = "boolean"         # [Boolean(Source=Attribute,Path=...,TrueValue="Yes",FalseValue="No")]
+    RICH_TEXT = "rich_text"     # [RichText(Source=Attribute,Path=...)]
+    PHONE = "phone"             # [Attribute(Path)]
+    EMAIL = "email"             # [Attribute(Path)]
+    URL = "url"                 # [Attribute(Path)]
+    IMAGE = "image"             # [Image(Path=...)]
 
 
 class Alignment(str, Enum):
@@ -146,6 +149,7 @@ class TextConfig(BaseModel):
     
     content: str  # Template string with {field} placeholders
     style: Optional[str] = None  # bold, italic, etc.
+    hyperlinks: List["HyperlinkDef"] = Field(default_factory=list)  # Inline hyperlinks
 
 
 class TableColumn(BaseModel):
@@ -197,6 +201,36 @@ class SpacerConfig(BaseModel):
     height: float = 0.25  # Inches
 
 
+class ListConfig(BaseModel):
+    """Configuration for list sections (bulleted or numbered)."""
+    
+    list_type: Literal["bullet", "number"] = "bullet"
+    items: List[str] = Field(default_factory=list)  # Static items or {field} templates
+    source: Optional[str] = None  # Path to collection for dynamic lists
+    item_field: Optional[str] = None  # Field to display from each item in collection
+    indent_level: int = 0  # Nesting level (0 = top level)
+
+
+class PageHeaderFooterConfig(BaseModel):
+    """Configuration for page headers and footers."""
+    
+    left_text: Optional[str] = None    # Text/placeholder for left side
+    center_text: Optional[str] = None  # Text/placeholder for center
+    right_text: Optional[str] = None   # Text/placeholder for right side
+    include_page_number: bool = False  # Add page number
+    page_number_format: str = "Page {page} of {total}"  # Format for page numbers
+    font_size: int = 9
+    show_on_first_page: bool = True
+
+
+class HyperlinkDef(BaseModel):
+    """Definition for a hyperlink in text content."""
+    
+    text: str                          # Display text
+    url: str                           # URL (can include Kahua placeholder like {WebUrl})
+    tooltip: Optional[str] = None      # Optional hover tooltip
+
+
 # ============================================================================
 # Section Definition
 # ============================================================================
@@ -217,6 +251,7 @@ class Section(BaseModel):
     image_config: Optional[ImageConfig] = None
     divider_config: Optional[DividerConfig] = None
     spacer_config: Optional[SpacerConfig] = None
+    list_config: Optional[ListConfig] = None
     
     def get_config(self) -> Optional[BaseModel]:
         """Get the active configuration based on section type."""
@@ -228,6 +263,7 @@ class Section(BaseModel):
             SectionType.IMAGE: self.image_config,
             SectionType.DIVIDER: self.divider_config,
             SectionType.SPACER: self.spacer_config,
+            SectionType.LIST: self.list_config,
         }
         return config_map.get(self.type)
 
@@ -245,6 +281,11 @@ class LayoutConfig(BaseModel):
     margin_left: float = 0.75
     margin_right: float = 0.75
     page_size: Literal["letter", "legal", "a4"] = "letter"
+    columns: int = 1  # Number of content columns
+    
+    # Page header/footer
+    page_header: Optional[PageHeaderFooterConfig] = None
+    page_footer: Optional[PageHeaderFooterConfig] = None
 
 
 class StyleConfig(BaseModel):

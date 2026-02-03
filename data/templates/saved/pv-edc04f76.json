@@ -1,0 +1,464 @@
+{
+  "id": "pv-edc04f76",
+  "name": "TVUSD Change Order",
+  "description": null,
+  "version": "1.0",
+  "entity_def": "kahua.expensechangeorder",
+  "layout": {
+    "orientation": "portrait",
+    "margin_top": 0.75,
+    "margin_bottom": 0.75,
+    "margin_left": 0.75,
+    "margin_right": 0.75,
+    "page_size": "letter",
+    "columns": 1,
+    "page_header": null,
+    "page_footer": {
+      "left_text": null,
+      "center_text": "TVUSD Change Order Form",
+      "right_text": null,
+      "include_page_number": true,
+      "page_number_format": "Page {page} of {total}",
+      "font_size": 9,
+      "show_on_first_page": true
+    }
+  },
+  "style": {
+    "primary_color": "#0f172a",
+    "secondary_color": "#0369a1",
+    "accent_color": "#059669",
+    "text_color": "#1e293b",
+    "muted_color": "#64748b",
+    "font_family": "Calibri",
+    "heading_font": "Calibri Light",
+    "mono_font": "Consolas",
+    "title_size": 18,
+    "heading_size": 12,
+    "body_size": 10,
+    "small_size": 8,
+    "table_header_bg": "#0f172a",
+    "table_header_fg": "#ffffff",
+    "table_alt_row_bg": "#f8fafc",
+    "table_border_color": "#e2e8f0",
+    "section_spacing": 0.25
+  },
+  "sections": [
+    {
+      "type": "header",
+      "title": null,
+      "order": 0,
+      "condition": null,
+      "header_config": {
+        "title_template": "{Number}",
+        "subtitle_template": "{Date}",
+        "fields": [],
+        "layout": "horizontal",
+        "show_labels": false,
+        "show_logo": true,
+        "logo_type": "company",
+        "logo_position": "left",
+        "static_title": "CHANGE ORDER",
+        "title_font": "Arial",
+        "title_size": 16,
+        "title_color": "#000000",
+        "title_bold": true,
+        "title_alignment": "center"
+      },
+      "detail_config": null,
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Project Information",
+      "order": 1,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "Contract.DomainPartition.Name",
+            "label": "Contract.Domainpartition.Name",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          },
+          {
+            "path": "Contract.DomainPartition.Number",
+            "label": "Contract.Domainpartition.Number",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          },
+          {
+            "path": "Contract.Number",
+            "label": "Contract.Number",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          },
+          {
+            "path": "Contract.Company.ShortLabel",
+            "label": "Contract.Company.Shortlabel",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          },
+          {
+            "path": "DateExecuted",
+            "label": "Date Executed",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Contract Details",
+      "order": 2,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "Contract.Type",
+            "label": "Contract.Type",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          },
+          {
+            "path": "BidPackageNo",
+            "label": "Bid Package No",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "text",
+      "title": "Modification to Contract",
+      "order": 3,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "MODIFICATION TO THE CONTRACT AS FOLLOWS:",
+        "style": null,
+        "hyperlinks": []
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "detail",
+      "title": "",
+      "order": 4,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "Description",
+            "label": "Description",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          },
+          {
+            "path": "ScopeOfWork",
+            "label": "Scope Of Work",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Financial Impact",
+      "order": 5,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "CostCurrentTotalValue",
+            "label": "Cost Current Total Value",
+            "format": "currency",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          },
+          {
+            "path": "OriginalContractAmount",
+            "label": "Original Contract Amount",
+            "format": "currency",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          },
+          {
+            "path": "PreviouslyApprovedChangesAmount",
+            "label": "Previously Approved Changes Amount",
+            "format": "currency",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          },
+          {
+            "path": "NewContractAmount",
+            "label": "New Contract Amount",
+            "format": "currency",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Schedule Impact",
+      "order": 6,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "ContractExtension",
+            "label": "Contract Extension",
+            "format": "number",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          },
+          {
+            "path": "RevisedCompletionDate",
+            "label": "Revised Completion Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "table",
+      "title": "Line Items",
+      "order": 7,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "Items",
+        "columns": [
+          {
+            "field": {
+              "path": "Description",
+              "label": "Description",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "Quantity",
+              "label": "Quantity",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "UnitValue",
+              "label": "Unitvalue",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          },
+          {
+            "field": {
+              "path": "TotalValue",
+              "label": "Totalvalue",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left",
+              "transform": null
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null,
+        "sort_by": null,
+        "sort_direction": "asc",
+        "group_by": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "text",
+      "title": "",
+      "order": 8,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "CHANGES IN SCOPE OF WORK:",
+        "style": null,
+        "hyperlinks": []
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    },
+    {
+      "type": "detail",
+      "title": "",
+      "order": 9,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "CustomUnlimitedText1",
+            "label": "Custom Unlimited Text1",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left",
+            "transform": null
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null,
+      "list_config": null,
+      "signature_config": null
+    }
+  ],
+  "created_at": "2026-02-02T13:41:36.619514",
+  "updated_at": null,
+  "created_by": null,
+  "tags": [],
+  "source_type": "generated"
+}

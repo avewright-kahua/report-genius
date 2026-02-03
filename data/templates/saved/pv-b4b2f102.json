@@ -1,0 +1,245 @@
+{
+  "id": "pv-b4b2f102",
+  "name": "RFI Portable View",
+  "description": "Correspondence for RFIModel",
+  "version": "1.0",
+  "entity_def": "kahua.rfi",
+  "layout": {
+    "orientation": "portrait",
+    "margin_top": 0.75,
+    "margin_bottom": 0.75,
+    "margin_left": 0.75,
+    "margin_right": 0.75,
+    "page_size": "letter"
+  },
+  "style": {
+    "primary_color": "#0f172a",
+    "secondary_color": "#0369a1",
+    "accent_color": "#059669",
+    "text_color": "#1e293b",
+    "muted_color": "#64748b",
+    "font_family": "Calibri",
+    "heading_font": "Calibri Light",
+    "mono_font": "Consolas",
+    "title_size": 18,
+    "heading_size": 12,
+    "body_size": 10,
+    "small_size": 8,
+    "table_header_bg": "#0f172a",
+    "table_header_fg": "#ffffff",
+    "table_alt_row_bg": "#f8fafc",
+    "table_border_color": "#e2e8f0",
+    "section_spacing": 0.25
+  },
+  "sections": [
+    {
+      "type": "header",
+      "title": null,
+      "order": 0,
+      "condition": null,
+      "header_config": {
+        "title_template": "{Number}",
+        "subtitle_template": "{Subject}",
+        "fields": [
+          {
+            "path": "Reference",
+            "label": "Reference",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "show_labels": false,
+        "show_logo": true,
+        "logo_type": "company"
+      },
+      "detail_config": null,
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": null,
+      "order": 1,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "Author",
+            "label": "Author",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "AssignedTo",
+            "label": "Assigned To",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": null,
+      "order": 2,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "Status",
+            "label": "Status",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "Date",
+            "label": "Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "DateResponded",
+            "label": "Date Responded",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "horizontal",
+        "columns": 3,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "divider",
+      "title": null,
+      "order": 3,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": {
+        "style": "solid",
+        "thickness": 1.0,
+        "color": null
+      },
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Question",
+      "order": 4,
+      "condition": {
+        "field": "Question",
+        "op": "not_empty",
+        "value": null
+      },
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{Question}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Response",
+      "order": 5,
+      "condition": {
+        "field": "Response",
+        "op": "not_empty",
+        "value": null
+      },
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{Response}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Response Secondary",
+      "order": 6,
+      "condition": {
+        "field": "ResponseSecondary",
+        "op": "not_empty",
+        "value": null
+      },
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{ResponseSecondary}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Notes",
+      "order": 7,
+      "condition": {
+        "field": "Notes",
+        "op": "not_empty",
+        "value": null
+      },
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{Notes}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    }
+  ],
+  "created_at": "2026-01-29T13:22:00.163446",
+  "updated_at": null,
+  "created_by": null,
+  "tags": [
+    "correspondence",
+    "rfimodel"
+  ],
+  "source_type": "generated"
+}

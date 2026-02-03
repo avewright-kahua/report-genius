@@ -37,8 +37,8 @@ from pv_template_schema import (
     StyleConfig,
 )
 
-# Import from template_gen SOTA system
-from template_gen.template_schema import (
+# Import from canonical report_genius SOTA system
+from report_genius.templates import (
     PortableViewTemplate as TGPortableTemplate,
     Section as TGSection,
     SectionType as TGSectionType,
@@ -55,6 +55,7 @@ from template_gen.template_schema import (
     ConditionOperator,
 )
 
+# Import design system from template_gen (to be migrated later)
 from template_gen.core import (
     DesignSystem,
     TemplateArchetype,
@@ -65,7 +66,7 @@ from template_gen.core import (
 
 from template_gen.core.smart_agent import AgentTools, ConversationState
 from template_gen.schema_introspector import get_available_schemas, EntitySchema
-from template_gen.docx_renderer import DocxRenderer
+from report_genius.rendering import DocxRenderer
 
 
 # ============================================================================
@@ -418,7 +419,7 @@ class UnifiedTemplateSystem:
         # Use SOTA renderer for better quality
         if use_sota:
             try:
-                from template_gen.docx_renderer_sota import SOTADocxRenderer
+                from report_genius.rendering import DocxRenderer as SOTADocxRenderer
                 renderer = SOTADocxRenderer(template)
             except ImportError:
                 # Fallback to standard renderer

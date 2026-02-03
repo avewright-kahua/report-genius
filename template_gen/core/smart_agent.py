@@ -107,14 +107,13 @@ class AgentMessage(BaseModel):
 class ConversationState(BaseModel):
     """State maintained across the conversation."""
     
+    model_config = {"use_enum_values": True}
+    
     messages: List[AgentMessage] = Field(default_factory=list)
     current_template: Optional[Dict[str, Any]] = None
     current_entity_type: Optional[str] = None
     current_archetype: Optional[TemplateArchetype] = None
     pending_changes: List[Dict[str, Any]] = Field(default_factory=list)
-    
-    class Config:
-        use_enum_values = True
 
 
 # ============================================================================

@@ -1,0 +1,869 @@
+{
+  "id": "pv-6954122b",
+  "name": "Complete RFI Template",
+  "description": null,
+  "version": "1.0",
+  "entity_def": "kahua.rfi",
+  "layout": {
+    "orientation": "portrait",
+    "margin_top": 0.75,
+    "margin_bottom": 0.75,
+    "margin_left": 0.75,
+    "margin_right": 0.75,
+    "page_size": "letter"
+  },
+  "style": {
+    "primary_color": "#0f172a",
+    "secondary_color": "#0369a1",
+    "accent_color": "#059669",
+    "text_color": "#1e293b",
+    "muted_color": "#64748b",
+    "font_family": "Calibri",
+    "heading_font": "Calibri Light",
+    "mono_font": "Consolas",
+    "title_size": 18,
+    "heading_size": 12,
+    "body_size": 10,
+    "small_size": 8,
+    "table_header_bg": "#0f172a",
+    "table_header_fg": "#ffffff",
+    "table_alt_row_bg": "#f8fafc",
+    "table_border_color": "#e2e8f0",
+    "section_spacing": 0.25
+  },
+  "sections": [
+    {
+      "type": "header",
+      "title": null,
+      "order": 0,
+      "condition": null,
+      "header_config": {
+        "title_template": "{Number}",
+        "subtitle_template": "{Reference}",
+        "fields": [
+          {
+            "path": "Subject",
+            "label": "Subject",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "horizontal",
+        "show_labels": false,
+        "show_logo": true,
+        "logo_type": "company"
+      },
+      "detail_config": null,
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Status & Priority",
+      "order": 1,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "Status",
+            "label": "Status",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "Priority",
+            "label": "Priority",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "Date",
+            "label": "Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "DueDate",
+            "label": "Due Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "DateSent",
+            "label": "Date Sent",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "DateResponded",
+            "label": "Date Responded",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "CompletedDate",
+            "label": "Completed Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Project & Classification",
+      "order": 2,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "Project",
+            "label": "Project",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "Type",
+            "label": "Type",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "Discipline",
+            "label": "Discipline",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "Reason",
+            "label": "Reason",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "Location",
+            "label": "Location",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "CSICode",
+            "label": "CSI Code",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "WorkPackage",
+            "label": "Work Package",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "SheetDetail",
+            "label": "Sheet Detail",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Contacts & Responsibilities",
+      "order": 3,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "Author",
+            "label": "Author",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "AssignedTo",
+            "label": "Assigned To",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "SourceCompany",
+            "label": "Source Company",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "OwnerRepresentative",
+            "label": "Owner Representative",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "OfficialResponder",
+            "label": "Official Responder",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "CurrentOfficialResponder",
+            "label": "Current Official Responder",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Question",
+      "order": 4,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{Question}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Proposed Solution",
+      "order": 5,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{ProposedSolution}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Response",
+      "order": 6,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{Response}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Secondary Response",
+      "order": 7,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{ResponseSecondary}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Impact Analysis",
+      "order": 8,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "CostEffect",
+            "label": "Cost Effect",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "TimeEffect",
+            "label": "Time Effect",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "CostAmount",
+            "label": "Cost Amount",
+            "format": "currency",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "NumberOfDays",
+            "label": "Number Of Days",
+            "format": "number",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "WorkSuspended",
+            "label": "Work Suspended",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Review Timeline",
+      "order": 9,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "ReviewStartDate",
+            "label": "Review Start Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "ReviewEndDate",
+            "label": "Review End Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "SentToOwnerDate",
+            "label": "Sent To Owner Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "OwnerRespondedDate",
+            "label": "Owner Responded Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Owner Remarks",
+      "order": 10,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{OwnerRemarks}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Instructions to Official Responder",
+      "order": 11,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{InstructionsToOfficialResponder}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Instructions to Responders",
+      "order": 12,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{InstructionsToResponders}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Notes",
+      "order": 13,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{Notes}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": "References",
+      "order": 14,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "SourceRFI",
+            "label": "Source RFI",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "RFIReferenceNumber1",
+            "label": "RFI Reference Number1",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "RFIReferenceNumber2",
+            "label": "RFI Reference Number2",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "RootCause",
+            "label": "Root Cause",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Workflow Settings",
+      "order": 15,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "AutosendToOfficialResponder",
+            "label": "Autosend To Official Responder",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "AutosendToResponders",
+            "label": "Autosend To Responders",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "RespondersCanAddResponders",
+            "label": "Responders Can Add Responders",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "RespondersSeeAllResponses",
+            "label": "Responders See All Responses",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "NotifyAllResponders",
+            "label": "Notify All Responders",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "IsUnsubmitted",
+            "label": "Is Unsubmitted",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Custom Fields",
+      "order": 16,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "UniversalLookup1",
+            "label": "Universal Lookup1",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "UniversalLookup2",
+            "label": "Universal Lookup2",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "UniversalLookup3",
+            "label": "Universal Lookup3",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "UniversalLookup4",
+            "label": "Universal Lookup4",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "UniversalLookup5",
+            "label": "Universal Lookup5",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "table",
+      "title": "Responders",
+      "order": 17,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "Responders",
+        "columns": [
+          {
+            "field": {
+              "path": "Responders",
+              "label": "Responders",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left"
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "table",
+      "title": "Distribution List",
+      "order": 18,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "Distribution",
+        "columns": [
+          {
+            "field": {
+              "path": "Distribution",
+              "label": "Distribution",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left"
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "table",
+      "title": "Comments",
+      "order": 19,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "Comments",
+        "columns": [
+          {
+            "field": {
+              "path": "Comments",
+              "label": "Comments",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left"
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "table",
+      "title": "Secondary Comments",
+      "order": 20,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "SecondaryComments",
+        "columns": [
+          {
+            "field": {
+              "path": "SecondaryComments",
+              "label": "Secondary Comments",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left"
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "table",
+      "title": "References",
+      "order": 21,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": null,
+      "table_config": {
+        "source": "OutwardReferences",
+        "columns": [
+          {
+            "field": {
+              "path": "OutwardReferences",
+              "label": "Outward References",
+              "format": "text",
+              "format_options": null,
+              "alignment": "left"
+            },
+            "width": null,
+            "alignment": "left",
+            "min_width": null,
+            "max_width": null
+          }
+        ],
+        "show_header": true,
+        "max_rows": null,
+        "empty_message": null,
+        "show_subtotals": false,
+        "subtotal_fields": [],
+        "row_condition": null
+      },
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Disclaimer",
+      "order": 22,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{Disclaimer}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    }
+  ],
+  "created_at": "2026-01-29T14:33:32.957720",
+  "updated_at": null,
+  "created_by": null,
+  "tags": [],
+  "source_type": "generated"
+}

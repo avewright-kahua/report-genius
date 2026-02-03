@@ -1,0 +1,205 @@
+{
+  "id": "pv-89504820",
+  "name": "Complete RFI View",
+  "description": null,
+  "version": "1.0",
+  "entity_def": "kahua.rfi",
+  "layout": {
+    "orientation": "portrait",
+    "margin_top": 0.75,
+    "margin_bottom": 0.75,
+    "margin_left": 0.75,
+    "margin_right": 0.75,
+    "page_size": "letter"
+  },
+  "style": {
+    "primary_color": "#0f172a",
+    "secondary_color": "#0369a1",
+    "accent_color": "#059669",
+    "text_color": "#1e293b",
+    "muted_color": "#64748b",
+    "font_family": "Calibri",
+    "heading_font": "Calibri Light",
+    "mono_font": "Consolas",
+    "title_size": 18,
+    "heading_size": 12,
+    "body_size": 10,
+    "small_size": 8,
+    "table_header_bg": "#0f172a",
+    "table_header_fg": "#ffffff",
+    "table_alt_row_bg": "#f8fafc",
+    "table_border_color": "#e2e8f0",
+    "section_spacing": 0.25
+  },
+  "sections": [
+    {
+      "type": "header",
+      "title": null,
+      "order": 0,
+      "condition": null,
+      "header_config": {
+        "title_template": "{Number}",
+        "subtitle_template": "{Subject}",
+        "fields": [
+          {
+            "path": "Status",
+            "label": "Status",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "horizontal",
+        "show_labels": false,
+        "show_logo": true,
+        "logo_type": "company"
+      },
+      "detail_config": null,
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Key Information",
+      "order": 1,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "Priority",
+            "label": "Priority",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "Type",
+            "label": "Type",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "Discipline",
+            "label": "Discipline",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "Location",
+            "label": "Location",
+            "format": "text",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "detail",
+      "title": "Dates",
+      "order": 2,
+      "condition": null,
+      "header_config": null,
+      "detail_config": {
+        "fields": [
+          {
+            "path": "Date",
+            "label": "Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "DueDate",
+            "label": "Due Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "DateSent",
+            "label": "Date Sent",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "DateResponded",
+            "label": "Date Responded",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          },
+          {
+            "path": "CompletedDate",
+            "label": "Completed Date",
+            "format": "date",
+            "format_options": null,
+            "alignment": "left"
+          }
+        ],
+        "layout": "grid",
+        "columns": 2,
+        "show_labels": true,
+        "label_width": null
+      },
+      "text_config": null,
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Question",
+      "order": 3,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{Question}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    },
+    {
+      "type": "text",
+      "title": "Response",
+      "order": 4,
+      "condition": null,
+      "header_config": null,
+      "detail_config": null,
+      "text_config": {
+        "content": "{Response}",
+        "style": null
+      },
+      "table_config": null,
+      "image_config": null,
+      "divider_config": null,
+      "spacer_config": null
+    }
+  ],
+  "created_at": "2026-01-29T13:47:28.548258",
+  "updated_at": null,
+  "created_by": null,
+  "tags": [],
+  "source_type": "generated"
+}

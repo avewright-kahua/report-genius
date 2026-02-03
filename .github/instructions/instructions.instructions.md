@@ -1,7 +1,7 @@
 ---
 applyTo: '**'
 ---
-Read the MD files in the wiki folder.
+Read the MD files in the docs folder. Before creating docx read through docx_docs folder.
 
 Provide project context and coding guidelines that AI should follow when generating code, answering questions, or reviewing changes.
 

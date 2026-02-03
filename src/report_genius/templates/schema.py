@@ -1,7 +1,10 @@
 """
 Template Schema - Pydantic models defining the portable view template structure.
 
-This module provides type-safe definitions for the JSON template format,
+This is the CANONICAL schema definition for the report-genius system.
+All template-related code should import from this module.
+
+Provides type-safe definitions for the JSON template format,
 enabling validation, serialization, and programmatic manipulation of templates.
 """
 
@@ -15,16 +18,23 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 
+# ============================================================================
+# Enumerations
+# ============================================================================
+
 class SectionType(str, Enum):
     """Types of sections that can appear in a template."""
     
-    HEADER = "header"
-    DETAIL = "detail"
-    TEXT = "text"
-    TABLE = "table"
-    IMAGE = "image"
-    DIVIDER = "divider"
-    SPACER = "spacer"
+    HEADER = "header"       # Title/identity section at top
+    DETAIL = "detail"       # Key-value pairs in grid layout
+    TEXT = "text"           # Long-form text content
+    TABLE = "table"         # Tabular data from collections
+    IMAGE = "image"         # Static or dynamic images
+    DIVIDER = "divider"     # Visual separator
+    SPACER = "spacer"       # Vertical whitespace
+    LIST = "list"           # Bulleted or numbered list
+    SIGNATURE = "signature" # Signature blocks
+    PAGE_BREAK = "page_break"  # Force new page
 
 
 class FieldFormat(str, Enum):
@@ -41,6 +51,8 @@ class FieldFormat(str, Enum):
     PHONE = "phone"
     EMAIL = "email"
     URL = "url"
+    RICH_TEXT = "rich_text"
+    IMAGE = "image"
 
 
 class Alignment(str, Enum):
@@ -54,9 +66,9 @@ class Alignment(str, Enum):
 class LayoutType(str, Enum):
     """Layout options for detail sections."""
     
-    GRID = "grid"
-    HORIZONTAL = "horizontal"
-    VERTICAL = "vertical"
+    GRID = "grid"           # Multi-column grid
+    HORIZONTAL = "horizontal"  # Single row
+    VERTICAL = "vertical"   # Single column stacked
 
 
 class ConditionOperator(str, Enum):
@@ -71,6 +83,13 @@ class ConditionOperator(str, Enum):
     CONTAINS = "contains"
 
 
+class Orientation(str, Enum):
+    """Page orientation options."""
+    
+    PORTRAIT = "portrait"
+    LANDSCAPE = "landscape"
+
+
 # ============================================================================
 # Field Definitions
 # ============================================================================
@@ -79,29 +98,38 @@ class FormatOptions(BaseModel):
     """Options for field formatting."""
     
     decimals: Optional[int] = None
-    format: Optional[str] = None
-    prefix: Optional[str] = None
-    suffix: Optional[str] = None
-    default: Optional[str] = None
+    format: Optional[str] = None      # Date format string
+    prefix: Optional[str] = None      # e.g., "$"
+    suffix: Optional[str] = None      # e.g., "%"
+    default: Optional[str] = None     # Default if empty
     thousand_separator: bool = True
 
 
 class FieldDef(BaseModel):
     """Definition of a single field in the template."""
     
-    path: str
-    label: Optional[str] = None
+    path: str  # Dot-notation path to field (e.g., "ContractorCompany.ShortLabel")
+    label: Optional[str] = None  # Display label (auto-generated if not provided)
     format: FieldFormat = FieldFormat.TEXT
     format_options: Optional[FormatOptions] = None
     alignment: Alignment = Alignment.LEFT
+    transform: Optional[str] = None  # Optional: "uppercase", "sum", etc.
 
 
 class Condition(BaseModel):
     """Conditional rendering rule."""
     
-    field: str
+    field: str  # Field path to check
     op: ConditionOperator = ConditionOperator.NOT_EMPTY
-    value: Optional[Any] = None
+    value: Optional[Any] = None  # Value for comparison operators
+
+
+class HyperlinkDef(BaseModel):
+    """Definition for a hyperlink in text content."""
+    
+    text: str                          # Display text
+    url: str                           # URL (can include placeholder like {WebUrl})
+    tooltip: Optional[str] = None      # Optional hover tooltip
 
 
 # ============================================================================
@@ -111,13 +139,24 @@ class Condition(BaseModel):
 class HeaderConfig(BaseModel):
     """Configuration for header sections."""
     
-    title_template: str = "{Number}"
+    title_template: str = "{Number}"  # Template string using {field} placeholders
     subtitle_template: Optional[str] = None
-    fields: List[FieldDef] = Field(default_factory=list)
+    fields: List[FieldDef] = Field(default_factory=list)  # Additional header fields
     layout: LayoutType = LayoutType.HORIZONTAL
     show_labels: bool = False
-    show_logo: bool = False
-    logo_type: str = "company"
+    show_logo: bool = False  # Include company/project logo
+    logo_type: str = "company"  # "company" or "project"
+    logo_position: str = "left"  # "left" or "right"
+    
+    # Static title (literal text, not a placeholder)
+    static_title: Optional[str] = None
+    
+    # Title styling overrides
+    title_font: Optional[str] = None      # Font family
+    title_size: Optional[int] = None      # Font size in points
+    title_color: Optional[str] = None     # Hex color
+    title_bold: bool = True
+    title_alignment: Alignment = Alignment.LEFT
 
 
 class DetailConfig(BaseModel):
@@ -127,21 +166,22 @@ class DetailConfig(BaseModel):
     layout: LayoutType = LayoutType.GRID
     columns: int = 2
     show_labels: bool = True
-    label_width: Optional[int] = None
+    label_width: Optional[int] = None  # Percentage
 
 
 class TextConfig(BaseModel):
     """Configuration for text block sections."""
     
-    content: str
-    style: Optional[str] = None
+    content: str  # Template string with {field} placeholders
+    style: Optional[str] = None  # bold, italic, etc.
+    hyperlinks: List[HyperlinkDef] = Field(default_factory=list)
 
 
 class TableColumn(BaseModel):
     """Definition of a table column."""
     
     field: FieldDef
-    width: Optional[int] = None
+    width: Optional[int] = None  # Percentage or character width
     alignment: Alignment = Alignment.LEFT
     min_width: Optional[int] = None
     max_width: Optional[int] = None
@@ -150,24 +190,27 @@ class TableColumn(BaseModel):
 class TableConfig(BaseModel):
     """Configuration for table sections."""
     
-    source: str
+    source: str  # Path to collection field (e.g., "Items")
     columns: List[TableColumn]
     show_header: bool = True
     max_rows: Optional[int] = None
     empty_message: Optional[str] = None
     show_subtotals: bool = False
     subtotal_fields: List[str] = Field(default_factory=list)
-    row_condition: Optional[Condition] = None
+    row_condition: Optional[Condition] = None  # Filter rows
+    sort_by: Optional[str] = None
+    sort_direction: str = "asc"
+    group_by: Optional[str] = None      # Field to group rows by
 
 
 class ImageConfig(BaseModel):
     """Configuration for image sections."""
     
     source: Literal["static", "field"] = "static"
-    url: Optional[str] = None
-    field_path: Optional[str] = None
-    width: Optional[float] = None
-    height: Optional[float] = None
+    url: Optional[str] = None  # For static images
+    field_path: Optional[str] = None  # For dynamic images
+    width: Optional[float] = None  # Inches
+    height: Optional[float] = None  # Inches
     alignment: Alignment = Alignment.LEFT
     caption: Optional[str] = None
 
@@ -176,14 +219,46 @@ class DividerConfig(BaseModel):
     """Configuration for divider sections."""
     
     style: Literal["solid", "dashed", "dotted", "double"] = "solid"
-    thickness: float = 1.0
-    color: Optional[str] = None
+    thickness: float = 1.0  # Points
+    color: Optional[str] = None  # Hex color
 
 
 class SpacerConfig(BaseModel):
     """Configuration for spacer sections."""
     
-    height: float = 0.25
+    height: float = 0.25  # Inches
+
+
+class ListConfig(BaseModel):
+    """Configuration for list sections (bulleted or numbered)."""
+    
+    list_type: Literal["bullet", "number"] = "bullet"
+    items: List[str] = Field(default_factory=list)  # Static items or {field} templates
+    source: Optional[str] = None  # Path to collection for dynamic lists
+    item_field: Optional[str] = None  # Field to display from each item
+    indent_level: int = 0  # Nesting level (0 = top level)
+
+
+class SignatureConfig(BaseModel):
+    """Configuration for signature sections."""
+    
+    signer_name_field: Optional[str] = None  # Path to signer name
+    signer_title_field: Optional[str] = None  # Path to signer title
+    date_field: Optional[str] = None  # Path to date signed
+    show_line: bool = True
+    line_width: float = 3.0  # Inches
+
+
+class PageHeaderFooterConfig(BaseModel):
+    """Configuration for page headers and footers."""
+    
+    left_text: Optional[str] = None    # Text/placeholder for left side
+    center_text: Optional[str] = None  # Text/placeholder for center
+    right_text: Optional[str] = None   # Text/placeholder for right side
+    include_page_number: bool = False
+    page_number_format: str = "Page {page} of {total}"
+    font_size: int = 9
+    show_on_first_page: bool = True
 
 
 # ============================================================================
@@ -196,7 +271,7 @@ class Section(BaseModel):
     type: SectionType
     title: Optional[str] = None
     order: int = 0
-    condition: Optional[Condition] = None
+    condition: Optional[Condition] = None  # When to show this section
     
     # Type-specific configs (only one should be set based on type)
     header_config: Optional[HeaderConfig] = None
@@ -206,6 +281,8 @@ class Section(BaseModel):
     image_config: Optional[ImageConfig] = None
     divider_config: Optional[DividerConfig] = None
     spacer_config: Optional[SpacerConfig] = None
+    list_config: Optional[ListConfig] = None
+    signature_config: Optional[SignatureConfig] = None
     
     def get_config(self) -> Optional[BaseModel]:
         """Get the active configuration based on section type."""
@@ -217,6 +294,8 @@ class Section(BaseModel):
             SectionType.IMAGE: self.image_config,
             SectionType.DIVIDER: self.divider_config,
             SectionType.SPACER: self.spacer_config,
+            SectionType.LIST: self.list_config,
+            SectionType.SIGNATURE: self.signature_config,
         }
         return config_map.get(self.type)
 
@@ -229,22 +308,27 @@ class LayoutConfig(BaseModel):
     """Page layout configuration."""
     
     orientation: Literal["portrait", "landscape"] = "portrait"
-    margin_top: float = 0.75
+    margin_top: float = 0.75  # Inches
     margin_bottom: float = 0.75
     margin_left: float = 0.75
     margin_right: float = 0.75
     page_size: Literal["letter", "legal", "a4"] = "letter"
+    columns: int = 1  # Number of content columns
+    
+    # Page header/footer
+    page_header: Optional[PageHeaderFooterConfig] = None
+    page_footer: Optional[PageHeaderFooterConfig] = None
 
 
 class StyleConfig(BaseModel):
     """Visual styling configuration."""
     
     # Colors
-    primary_color: str = "#0f172a"
-    secondary_color: str = "#0369a1"
-    accent_color: str = "#059669"
-    text_color: str = "#1e293b"
-    muted_color: str = "#64748b"
+    primary_color: str = "#0f172a"  # Slate 900
+    secondary_color: str = "#0369a1"  # Sky 700
+    accent_color: str = "#059669"  # Emerald 600
+    text_color: str = "#1e293b"  # Slate 800
+    muted_color: str = "#64748b"  # Slate 500
     
     # Fonts
     font_family: str = "Calibri"
@@ -295,6 +379,29 @@ class PortableViewTemplate(BaseModel):
     model_config = {
         "json_encoders": {datetime: lambda v: v.isoformat()}
     }
+    
+    # ========== Compatibility Methods ==========
+    # These provide API compatibility with the old dataclass schema
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict (compatibility with old dataclass schema)."""
+        return self.model_dump(mode="json")
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PortableViewTemplate":
+        """Create from dict (compatibility with old dataclass schema)."""
+        return cls.model_validate(data)
+    
+    def to_json(self) -> str:
+        """Convert to JSON string."""
+        return self.model_dump_json(indent=2)
+    
+    @classmethod  
+    def from_json(cls, json_str: str) -> "PortableViewTemplate":
+        """Create from JSON string."""
+        return cls.model_validate_json(json_str)
+    
+    # ========== Template Methods ==========
     
     def get_sections_ordered(self) -> List[Section]:
         """Get sections sorted by order."""

@@ -11,6 +11,8 @@ Key improvements over basic renderer:
 - Better field groupings with visual separation
 - Proper use of Word styles for consistency
 - Modern color schemes and spacing
+
+Token generation uses the kahua_tokens module for standards-compliant Kahua syntax.
 """
 
 from __future__ import annotations
@@ -31,6 +33,56 @@ from docx.oxml.ns import nsdecls, qn
 from docx.shared import Inches, Pt, RGBColor, Twips, Cm
 from docx.table import Table, _Cell
 
+# Import Kahua token builders for standards-compliant token generation
+try:
+    from .kahua_tokens import (
+        build_attribute_token,
+        build_boolean_token,
+        build_currency_token,
+        build_date_token,
+        build_number_token,
+        build_rich_text_token,
+        build_start_table_token,
+        build_end_table_token,
+        build_if_token,
+        build_end_if_token,
+        build_company_logo_token,
+        build_field_token,
+        to_kahua_path,
+        TokenSource,
+        ConditionOperator,
+        DateFormat,
+        NumberFormat,
+        CurrencyFormat,
+        PROJECT_NAME_TOKEN,
+        PROJECT_NUMBER_TOKEN,
+        REPORT_MODIFIED_TIMESTAMP_TOKEN,
+    )
+except ImportError:
+    from kahua_tokens import (
+        build_attribute_token,
+        build_boolean_token,
+        build_currency_token,
+        build_date_token,
+        build_number_token,
+        build_rich_text_token,
+        build_start_table_token,
+        build_end_table_token,
+        build_if_token,
+        build_end_if_token,
+        build_company_logo_token,
+        build_field_token,
+        to_kahua_path,
+        TokenSource,
+        ConditionOperator,
+        DateFormat,
+        NumberFormat,
+        CurrencyFormat,
+        PROJECT_NAME_TOKEN,
+        PROJECT_NUMBER_TOKEN,
+        REPORT_MODIFIED_TIMESTAMP_TOKEN,
+    )
+
 try:
     from .template_schema import (
         Alignment,
@@ -38,7 +90,10 @@ try:
         FieldDef,
         FieldFormat,
         HeaderConfig,
+        HyperlinkDef,
         LayoutConfig,
+        ListConfig,
+        PageHeaderFooterConfig,
         PortableViewTemplate,
         Section,
         SectionType,
@@ -54,7 +109,10 @@ except ImportError:
         FieldDef,
         FieldFormat,
         HeaderConfig,
+        HyperlinkDef,
         LayoutConfig,
+        ListConfig,
+        PageHeaderFooterConfig,
         PortableViewTemplate,
         Section,
         SectionType,
@@ -108,95 +166,128 @@ class DesignTokens:
 
 
 # =============================================================================
-# Kahua Placeholder Builders
+# Kahua Placeholder Builders (delegating to kahua_tokens module)
 # =============================================================================
 
 def _to_kahua_path(path: str, entity_prefix: Optional[str] = None) -> str:
     """Convert a template path to Kahua attribute path."""
-    if "." not in path and path[0].isupper():
-        if entity_prefix:
-            return f"{entity_prefix}.{path}"
-        return path
-    
-    parts = path.split(".")
-    pascal_parts = []
-    for part in parts:
-        if "_" in part:
-            segments = part.split("_")
-            pascal = "".join(seg.capitalize() for seg in segments if seg)
-            pascal_parts.append(pascal)
-        else:
-            pascal_parts.append(part[0].upper() + part[1:] if part else part)
-    
-    result = ".".join(pascal_parts)
-    if entity_prefix and not result.startswith(entity_prefix):
-        return f"{entity_prefix}.{result}"
-    return result
+    return to_kahua_path(path, entity_prefix)
 
 
 def build_attribute(path: str, prefix: Optional[str] = None) -> str:
     """Build [Attribute(Path)] placeholder."""
-    kahua_path = _to_kahua_path(path, prefix)
-    return f"[Attribute({kahua_path})]"
+    return build_attribute_token(path, prefix=prefix)
 
 
 def build_currency(path: str, prefix: Optional[str] = None) -> str:
     """Build [Currency(...)] placeholder."""
-    kahua_path = _to_kahua_path(path, prefix)
-    return f'[Currency(Source=Attribute,Path={kahua_path},Format="C2")]'
+    return build_currency_token(path, prefix=prefix, format=CurrencyFormat.DEFAULT)
 
 
 def build_number(path: str, fmt: str = "N0", prefix: Optional[str] = None) -> str:
     """Build [Number(...)] placeholder."""
-    kahua_path = _to_kahua_path(path, prefix)
-    return f'[Number(Source=Attribute,Path={kahua_path},Format="{fmt}")]'
+    # Map string format to NumberFormat enum
+    format_map = {
+        "N0": NumberFormat.INTEGER,
+        "N1": NumberFormat.ONE_DECIMAL,
+        "N2": NumberFormat.TWO_DECIMALS,
+        "F0": NumberFormat.FIXED_0,
+        "F1": NumberFormat.FIXED_1,
+        "F2": NumberFormat.FIXED_2,
+        "P0": NumberFormat.PERCENT_0,
+        "P1": NumberFormat.PERCENT_1,
+        "P2": NumberFormat.PERCENT_2,
+    }
+    number_format = format_map.get(fmt, NumberFormat.INTEGER)
+    return build_number_token(path, prefix=prefix, format=number_format)
 
 
 def build_date(path: str, fmt: str = "d", prefix: Optional[str] = None) -> str:
     """Build [Date(...)] placeholder."""
-    kahua_path = _to_kahua_path(path, prefix)
-    return f'[Date(Source=Attribute,Path={kahua_path},Format="{fmt}")]'
+    # Map string format to DateFormat enum
+    format_map = {
+        "d": DateFormat.SHORT_DATE,
+        "D": DateFormat.LONG_DATE,
+        "t": DateFormat.SHORT_TIME,
+        "T": DateFormat.LONG_TIME,
+        "f": DateFormat.FULL_SHORT,
+        "F": DateFormat.FULL_LONG,
+        "g": DateFormat.GENERAL_SHORT,
+        "G": DateFormat.GENERAL_LONG,
+    }
+    date_format = format_map.get(fmt, DateFormat.SHORT_DATE)
+    return build_date_token(path, prefix=prefix, format=date_format)
+
+
+def build_boolean(path: str, prefix: Optional[str] = None, true_value: str = "Yes", false_value: str = "No") -> str:
+    """Build [Boolean(...)] placeholder."""
+    return build_boolean_token(path, prefix=prefix, true_value=true_value, false_value=false_value)
 
 
 def build_start_table(name: str, source: str, prefix: Optional[str] = None) -> str:
     """Build [StartTable(...)] marker."""
-    kahua_path = _to_kahua_path(source, prefix)
-    return f"[StartTable(Name={name},Source=Attribute,Path={kahua_path},RowsInHeader=1)]"
+    return build_start_table_token(name, source, prefix=prefix)
 
 
 def build_end_table() -> str:
-    return "[EndTable]"
+    """Build [EndTable] closing marker."""
+    return build_end_table_token()
 
 
 def build_if(path: str, op: str = "IsNotEmpty", value: str = None, prefix: str = None) -> str:
     """Build [IF(...)] conditional."""
-    kahua_path = _to_kahua_path(path, prefix)
-    if value:
-        return f'[IF(Source=Attribute,Path={kahua_path},Operator={op},Value="{value}")]'
-    return f"[IF(Source=Attribute,Path={kahua_path},Operator={op})]"
+    # Map string operator to ConditionOperator enum
+    op_map = {
+        "IsNotEmpty": ConditionOperator.IS_NOT_EMPTY,
+        "IsEmpty": ConditionOperator.IS_EMPTY,
+        "IsNotNull": ConditionOperator.IS_NOT_NULL,
+        "IsNull": ConditionOperator.IS_NULL,
+        "Equals": ConditionOperator.EQUALS,
+        "DoesNotEqual": ConditionOperator.DOES_NOT_EQUAL,
+        "Contains": ConditionOperator.CONTAINS,
+        "IsGreaterThan": ConditionOperator.IS_GREATER_THAN,
+        "IsLessThan": ConditionOperator.IS_LESS_THAN,
+    }
+    operator = op_map.get(op, ConditionOperator.IS_NOT_EMPTY)
+    return build_if_token(path, operator=operator, value=value, prefix=prefix)
 
 
 def format_placeholder(field: FieldDef, prefix: str = None, in_table: bool = False) -> str:
-    """Generate appropriate Kahua placeholder based on field format."""
+    """
+    Generate appropriate Kahua placeholder based on field format.
+    
+    Uses the kahua_tokens module for standards-compliant token generation.
+    """
     p = None if in_table else prefix
     
-    match field.format:
-        case FieldFormat.CURRENCY:
-            return build_currency(field.path, p)
-        case FieldFormat.DECIMAL:
-            decimals = field.format_options.decimals if field.format_options else 2
-            return build_number(field.path, f"F{decimals}", p)
-        case FieldFormat.NUMBER:
-            return build_number(field.path, "N0", p)
-        case FieldFormat.PERCENT:
-            return build_number(field.path, "P1", p)
-        case FieldFormat.DATE:
-            fmt = field.format_options.format if field.format_options else "d"
-            return build_date(field.path, fmt, p)
-        case FieldFormat.DATETIME:
-            return build_date(field.path, "g", p)
-        case _:
-            return build_attribute(field.path, p)
+    # Map FieldFormat to field_type string for build_field_token
+    format_type_map = {
+        FieldFormat.CURRENCY: "currency",
+        FieldFormat.DECIMAL: "decimal",
+        FieldFormat.NUMBER: "number",
+        FieldFormat.PERCENT: "percent",
+        FieldFormat.DATE: "date",
+        FieldFormat.DATETIME: "datetime",
+        FieldFormat.BOOLEAN: "boolean",
+        FieldFormat.RICH_TEXT: "rich_text",
+        FieldFormat.IMAGE: "image",
+        FieldFormat.TEXT: "text",
+        FieldFormat.PHONE: "text",
+        FieldFormat.EMAIL: "text",
+        FieldFormat.URL: "text",
+    }
+    
+    field_type = format_type_map.get(field.format, "text")
+    
+    # Build format options dict
+    format_options = {}
+    if field.format_options:
+        if field.format_options.decimals is not None:
+            format_options["decimals"] = field.format_options.decimals
+        if field.format_options.format:
+            format_options["format"] = field.format_options.format
+    
+    return build_field_token(field.path, field_type, prefix=p, format_options=format_options)
 
 
 # =============================================================================
@@ -352,6 +443,163 @@ class SOTADocxRenderer:
         section.bottom_margin = Inches(0.75)
         section.left_margin = Inches(0.75)
         section.right_margin = Inches(0.75)
+        
+        # Configure page headers and footers if specified
+        if layout:
+            if layout.page_header:
+                self._setup_page_header(section, layout.page_header)
+            if layout.page_footer:
+                self._setup_page_footer(section, layout.page_footer)
+    
+    def _setup_page_header(self, section, config: PageHeaderFooterConfig) -> None:
+        """Setup page header with left/center/right text and optional page numbers."""
+        header = section.header
+        header.is_linked_to_previous = False
+        
+        # Clear default paragraph
+        if header.paragraphs:
+            header.paragraphs[0].clear()
+        
+        # Create a table for left/center/right alignment (invisible borders)
+        table = header.add_table(rows=1, cols=3, width=Inches(7))
+        table.autofit = False
+        table.allow_autofit = False
+        
+        # Set column widths
+        for cell in table.rows[0].cells:
+            cell.width = Inches(7/3)
+        
+        # Remove table borders
+        tbl = table._tbl
+        tblPr = tbl.tblPr if tbl.tblPr is not None else parse_xml(f'<w:tblPr {nsdecls("w")}/>')
+        tblBorders = parse_xml(
+            f'<w:tblBorders {nsdecls("w")}>'
+            '<w:top w:val="nil"/>'
+            '<w:left w:val="nil"/>'
+            '<w:bottom w:val="nil"/>'
+            '<w:right w:val="nil"/>'
+            '<w:insideH w:val="nil"/>'
+            '<w:insideV w:val="nil"/>'
+            '</w:tblBorders>'
+        )
+        tblPr.append(tblBorders)
+        
+        cells = table.rows[0].cells
+        
+        # Left cell
+        if config.left_text:
+            p = cells[0].paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            run = p.add_run(config.left_text)
+            run.font.size = Pt(config.font_size)
+        
+        # Center cell
+        if config.center_text:
+            p = cells[1].paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(config.center_text)
+            run.font.size = Pt(config.font_size)
+        
+        # Right cell - can include page numbers
+        if config.right_text or config.include_page_number:
+            p = cells[2].paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            if config.right_text:
+                run = p.add_run(config.right_text)
+                run.font.size = Pt(config.font_size)
+            if config.include_page_number:
+                if config.right_text:
+                    p.add_run(" | ")
+                self._add_page_number_field(p, config)
+    
+    def _setup_page_footer(self, section, config: PageHeaderFooterConfig) -> None:
+        """Setup page footer with left/center/right text and optional page numbers."""
+        footer = section.footer
+        footer.is_linked_to_previous = False
+        
+        # Clear default paragraph
+        if footer.paragraphs:
+            footer.paragraphs[0].clear()
+        
+        # Create a table for left/center/right alignment (invisible borders)
+        table = footer.add_table(rows=1, cols=3, width=Inches(7))
+        table.autofit = False
+        table.allow_autofit = False
+        
+        # Set column widths
+        for cell in table.rows[0].cells:
+            cell.width = Inches(7/3)
+        
+        # Remove table borders
+        tbl = table._tbl
+        tblPr = tbl.tblPr if tbl.tblPr is not None else parse_xml(f'<w:tblPr {nsdecls("w")}/>')
+        tblBorders = parse_xml(
+            f'<w:tblBorders {nsdecls("w")}>'
+            '<w:top w:val="nil"/>'
+            '<w:left w:val="nil"/>'
+            '<w:bottom w:val="nil"/>'
+            '<w:right w:val="nil"/>'
+            '<w:insideH w:val="nil"/>'
+            '<w:insideV w:val="nil"/>'
+            '</w:tblBorders>'
+        )
+        tblPr.append(tblBorders)
+        
+        cells = table.rows[0].cells
+        
+        # Left cell
+        if config.left_text:
+            p = cells[0].paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            run = p.add_run(config.left_text)
+            run.font.size = Pt(config.font_size)
+        
+        # Center cell - typically page numbers go here in footers
+        if config.center_text or config.include_page_number:
+            p = cells[1].paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            if config.include_page_number:
+                self._add_page_number_field(p, config)
+            elif config.center_text:
+                run = p.add_run(config.center_text)
+                run.font.size = Pt(config.font_size)
+        
+        # Right cell
+        if config.right_text:
+            p = cells[2].paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            run = p.add_run(config.right_text)
+            run.font.size = Pt(config.font_size)
+    
+    def _add_page_number_field(self, paragraph, config: PageHeaderFooterConfig) -> None:
+        """Add PAGE and NUMPAGES fields to paragraph for dynamic page numbering."""
+        # Parse the format string and insert fields
+        # Format like "Page {page} of {total}" becomes "Page [PAGE] of [NUMPAGES]"
+        format_str = config.page_number_format
+        
+        # Split by placeholders
+        parts = re.split(r'(\{page\}|\{total\})', format_str, flags=re.IGNORECASE)
+        
+        for part in parts:
+            if part.lower() == '{page}':
+                # Add PAGE field using XML
+                run = paragraph.add_run()
+                run.font.size = Pt(config.font_size)
+                fld_xml = (
+                    f'<w:fldSimple {nsdecls("w")} w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple>'
+                )
+                run._r.append(parse_xml(fld_xml))
+            elif part.lower() == '{total}':
+                # Add NUMPAGES field using XML
+                run = paragraph.add_run()
+                run.font.size = Pt(config.font_size)
+                fld_xml = (
+                    f'<w:fldSimple {nsdecls("w")} w:instr=" NUMPAGES "><w:r><w:t>1</w:t></w:r></w:fldSimple>'
+                )
+                run._r.append(parse_xml(fld_xml))
+            elif part:
+                run = paragraph.add_run(part)
+                run.font.size = Pt(config.font_size)
     
     def _setup_styles(self) -> None:
         """Configure document styles for professional output."""
@@ -433,6 +681,15 @@ class SOTADocxRenderer:
             heading_style.font.color.rgb = RGBColor(*hex_to_rgb(self.tokens.COLOR_PRIMARY))
             heading_style.paragraph_format.space_before = Pt(self.tokens.SPACE_SECTION)
             heading_style.paragraph_format.space_after = Pt(self.tokens.SPACE_PARAGRAPH)
+        
+        # Hyperlink style - for clickable links
+        if "Hyperlink" not in [s.name for s in styles]:
+            try:
+                link_style = styles.add_style("Hyperlink", WD_STYLE_TYPE.CHARACTER)
+                link_style.font.color.rgb = RGBColor(0, 0, 255)  # Blue
+                link_style.font.underline = True
+            except:
+                pass  # Style may already exist as built-in
     
     def render(self) -> Document:
         """Render the template to a Word document."""
@@ -465,6 +722,7 @@ class SOTADocxRenderer:
             SectionType.IMAGE: self._render_image,
             SectionType.DIVIDER: self._render_divider,
             SectionType.SPACER: self._render_spacer,
+            SectionType.LIST: self._render_list,
         }
         renderer = renderers.get(section.type)
         if renderer:
@@ -874,8 +1132,54 @@ class SOTADocxRenderer:
         run = p.add_run(content)
         run.font.size = Pt(self.tokens.SIZE_BODY)
         
+        # Add hyperlinks if defined
+        if config.hyperlinks:
+            for link in config.hyperlinks:
+                self._add_hyperlink_paragraph(link)
+        
         if section.condition:
             self._add_condition_end()
+    
+    def _add_hyperlink_paragraph(self, hyperlink: HyperlinkDef) -> None:
+        """Add a paragraph containing a hyperlink."""
+        p = self.doc.add_paragraph()
+        self._add_hyperlink(p, hyperlink.url, hyperlink.text, hyperlink.tooltip)
+    
+    def _add_hyperlink(self, paragraph, url: str, text: str, tooltip: str = None) -> None:
+        """Add a hyperlink to a paragraph using XML manipulation.
+        
+        Args:
+            paragraph: The paragraph to add the hyperlink to
+            url: The URL (can contain Kahua placeholders like {WebUrl})
+            text: The display text
+            tooltip: Optional hover tooltip
+        """
+        # Expand any placeholders in the URL
+        expanded_url = self._expand_template(url)
+        
+        # Get the paragraph's element
+        part = paragraph.part
+        r_id = part.relate_to(
+            expanded_url,
+            'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink',
+            is_external=True
+        )
+        
+        # Build the hyperlink XML
+        hyperlink = parse_xml(
+            f'<w:hyperlink {nsdecls("w")} r:id="{r_id}" {nsdecls("r")}>'
+            f'<w:r>'
+            f'<w:rPr><w:rStyle w:val="Hyperlink"/></w:rPr>'
+            f'<w:t>{text}</w:t>'
+            f'</w:r>'
+            f'</w:hyperlink>'
+        )
+        
+        # Add tooltip if specified
+        if tooltip:
+            hyperlink.set(qn('w:tooltip'), tooltip)
+        
+        paragraph._p.append(hyperlink)
     
     # =========================================================================
     # Divider & Spacer
@@ -902,6 +1206,54 @@ class SOTADocxRenderer:
         height = config.height if config else 0.25
         p = self.doc.add_paragraph()
         p.paragraph_format.space_before = Inches(height)
+    
+    # =========================================================================
+    # List Section
+    # =========================================================================
+    
+    def _render_list(self, section: Section) -> None:
+        """Render bulleted or numbered list section."""
+        config = section.list_config
+        if not config:
+            return
+        
+        if section.condition:
+            self._add_condition_start(section.condition)
+        
+        if section.title:
+            self._add_section_heading(section.title)
+        
+        # Determine list style
+        list_style = 'List Bullet' if config.list_type == 'bullet' else 'List Number'
+        
+        # Render static items
+        for item in config.items:
+            p = self.doc.add_paragraph(style=list_style)
+            # Check if item contains placeholders
+            if '{' in item and '}' in item:
+                # Item is a template with field references
+                p.add_run(item)
+            else:
+                p.add_run(item)
+            
+            # Handle indent level
+            if config.indent_level > 0:
+                p.paragraph_format.left_indent = Inches(0.5 * config.indent_level)
+        
+        # Handle dynamic list from collection source
+        if config.source and config.item_field:
+            # Add Kahua loop syntax for dynamic lists
+            start_p = self.doc.add_paragraph()
+            start_p.add_run(f'[StartRow({config.source})]')
+            
+            p = self.doc.add_paragraph(style=list_style)
+            p.add_run(f'[Attribute({config.item_field})]')
+            
+            end_p = self.doc.add_paragraph()
+            end_p.add_run('[EndRow()]')
+        
+        if section.condition:
+            self._add_condition_end()
     
     # =========================================================================
     # Image Section

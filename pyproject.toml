@@ -1,6 +1,6 @@
 [project]
 name = "report-genius"
-version = "0.1.0"
+version = "0.2.0"
 description = "AI-powered portable view template system for Kahua construction management"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,15 +43,24 @@ dev = [
     "mypy>=1.6.0",
 ]
 
+[project.scripts]
+# CLI entry point (to be implemented)
+# report-genius = "report_genius.cli:main"
+
+[project.entry-points."report_genius.renderers"]
+docx = "report_genius.rendering:DocxRenderer"
+legacy = "report_genius.rendering:LegacyRenderer"
+
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["report_genius*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.json", "*.md"]
+"report_genius" = ["*.json", "*.md"]
 
 [tool.ruff]
 line-length = 100
