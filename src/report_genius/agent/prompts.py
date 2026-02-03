@@ -258,3 +258,13 @@ Do not generate analytics reports."""
 
 ANALYTICS_PROMPT = """You are an analytics assistant. Focus on querying data using query_entities 
 and generating reports using generate_report. Do not build templates."""
+
+
+INJECTION_PROMPT = """You are a DOCX token-injection assistant. Focus exclusively on analyzing
+and injecting Kahua tokens into uploaded templates.
+
+Workflow:
+1. Analyze first (analyze_uploaded_template or process_attached_docx)
+2. If low-confidence mappings are present, ask the user to confirm
+3. Only inject with allow_low_confidence=true after explicit confirmation
+"""

@@ -355,7 +355,8 @@ async def upload_and_analyze_template(
     entity_def: str = "",
     auto_inject: bool = False,
     add_logo: bool = False,
-    add_timestamp: bool = False
+    add_timestamp: bool = False,
+    allow_low_confidence: bool = False,
 ) -> Dict[str, Any]:
     """
     Upload a DOCX template and analyze it for token injection.
@@ -389,11 +390,35 @@ async def upload_and_analyze_template(
         content = await file.read()
         
         # Analyze the document
-        result = analyze_and_inject(
-            doc_bytes=content,
-            entity_def=entity_def,
-            auto_inject=auto_inject
-        )
+        if auto_inject and not allow_low_confidence:
+            result = analyze_and_inject(
+                doc_bytes=content,
+                entity_def=entity_def,
+                auto_inject=False,
+            )
+            low_confidence = [
+                p.get("label", "")
+                for p in result["analysis"]["placeholders"]
+                if float(p.get("confidence", 1.0)) < float(os.getenv("RG_INJECTION_CONFIDENCE_THRESHOLD", "0.7"))
+            ]
+            if low_confidence:
+                return {
+                    "status": "needs_confirmation",
+                    "message": "Low-confidence mappings detected. Confirm to proceed.",
+                    "low_confidence": low_confidence,
+                    "analysis": result["analysis"],
+                }
+            result = analyze_and_inject(
+                doc_bytes=content,
+                entity_def=entity_def,
+                auto_inject=True,
+            )
+        else:
+            result = analyze_and_inject(
+                doc_bytes=content,
+                entity_def=entity_def,
+                auto_inject=auto_inject,
+            )
         
         # Apply optional enhancements to modified document or original
         modified_doc = result.get('modified_document', content) if auto_inject else content
@@ -445,7 +470,8 @@ async def upload_and_analyze_template(
 async def inject_tokens_into_template(
     file: UploadFile = FastAPIFile(...),
     entity_def: str = "",
-    field_mappings: str = ""  # JSON string of custom mappings
+    field_mappings: str = "",  # JSON string of custom mappings
+    allow_low_confidence: bool = False,
 ) -> Dict[str, Any]:
     """
     Inject Kahua tokens into a template based on analysis or custom mappings.
@@ -471,12 +497,32 @@ async def inject_tokens_into_template(
             except json_module.JSONDecodeError:
                 return {"status": "error", "error": "Invalid field_mappings JSON"}
         
+        if not allow_low_confidence:
+            analysis = analyze_and_inject(
+                doc_bytes=content,
+                entity_def=entity_def,
+                auto_inject=False,
+                schema_fields=custom_mappings,
+            )
+            low_confidence = [
+                p.get("label", "")
+                for p in analysis["analysis"]["placeholders"]
+                if float(p.get("confidence", 1.0)) < float(os.getenv("RG_INJECTION_CONFIDENCE_THRESHOLD", "0.7"))
+            ]
+            if low_confidence:
+                return {
+                    "status": "needs_confirmation",
+                    "message": "Low-confidence mappings detected. Confirm to proceed.",
+                    "low_confidence": low_confidence,
+                    "analysis": analysis["analysis"],
+                }
+
         # Analyze and inject
         result = analyze_and_inject(
             doc_bytes=content,
             entity_def=entity_def,
             auto_inject=True,
-            schema_fields=custom_mappings
+            schema_fields=custom_mappings,
         )
         
         if not result.get('injection', {}).get('success'):

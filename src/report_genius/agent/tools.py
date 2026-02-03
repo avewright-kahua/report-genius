@@ -8,7 +8,7 @@ Organized by category: Kahua API, Templates (SOTA), Legacy Templates, DOCX Injec
 import os
 import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List
 from pathlib import Path
 
 import httpx
@@ -30,6 +30,8 @@ def _auth_header_value() -> str:
 
 
 HEADERS_JSON = lambda: {"Content-Type": "application/json", "Authorization": _auth_header_value()}
+
+INJECTION_CONFIDENCE_THRESHOLD = float(os.getenv("RG_INJECTION_CONFIDENCE_THRESHOLD", "0.7"))
 
 # Entity aliases for friendly names
 ENTITY_ALIASES: Dict[str, str] = {
@@ -56,6 +58,14 @@ def resolve_entity_def(name_or_def: str) -> str:
     """Resolve friendly entity name to full definition."""
     key = (name_or_def or "").strip().lower()
     return ENTITY_ALIASES.get(key, name_or_def)
+
+
+def _low_confidence_labels(placeholders: List[dict]) -> List[str]:
+    return [
+        p.get("label", "")
+        for p in placeholders
+        if float(p.get("confidence", 1.0)) < INJECTION_CONFIDENCE_THRESHOLD
+    ]
 
 
 # ============== Kahua API Tools ==============
@@ -1052,7 +1062,8 @@ def inject_tokens_into_template(
     filename: str,
     entity_def: str = "",
     add_logo: bool = True,
-    add_timestamp: bool = True
+    add_timestamp: bool = True,
+    allow_low_confidence: bool = False,
 ) -> dict:
     """
     Inject Kahua tokens into an uploaded template based on detected patterns.
@@ -1064,6 +1075,7 @@ def inject_tokens_into_template(
         entity_def: Target Kahua entity for better field mapping
         add_logo: Add [CompanyLogo(...)] placeholder to header
         add_timestamp: Add [ReportModifiedTimeStamp] to footer
+        allow_low_confidence: Proceed even if low-confidence mappings are detected
         
     Returns:
         Dict with modified filename and download URL
@@ -1076,6 +1088,16 @@ def inject_tokens_into_template(
             return {"status": "error", "message": f"File not found: {filename}"}
         
         doc_bytes = file_path.read_bytes()
+        analysis = analyze_and_inject(doc_bytes, entity_def=entity_def, auto_inject=False)
+        low_confidence = _low_confidence_labels(analysis["analysis"]["placeholders"])
+        if low_confidence and not allow_low_confidence:
+            return {
+                "status": "needs_confirmation",
+                "message": "Low-confidence mappings detected. Confirm to proceed.",
+                "low_confidence": low_confidence,
+                "analysis": analysis["analysis"],
+            }
+
         result = analyze_and_inject(doc_bytes, entity_def=entity_def, auto_inject=True)
         
         if not result.get('injection', {}).get('success'):
@@ -1579,14 +1601,32 @@ def load_legacy_template_gen_tools():
 
 def get_all_tools():
     """Get all available tools for the agent."""
+    legacy_tools = []
+    if os.getenv("RG_ENABLE_LEGACY_TOOLS", "").strip().lower() in {"1", "true", "yes"}:
+        legacy_tools = load_legacy_pv_tools() + load_legacy_template_gen_tools()
+
     all_tools = (
         KAHUA_API_TOOLS +
         SOTA_TEMPLATE_TOOLS +
         DOCX_INJECTION_TOOLS +
         DIRECT_DOCX_TOOLS +
         AGENTIC_TEMPLATE_TOOLS +
-        load_legacy_pv_tools() +
-        load_legacy_template_gen_tools()
+        legacy_tools
     )
     log.info(f"Loaded {len(all_tools)} agent tools")
     return all_tools
+
+
+def get_tools_by_mode(mode: str):
+    """Return a focused toolset for the given mode."""
+    legacy_tools = []
+    if os.getenv("RG_ENABLE_LEGACY_TOOLS", "").strip().lower() in {"1", "true", "yes"}:
+        legacy_tools = load_legacy_pv_tools() + load_legacy_template_gen_tools()
+
+    if mode == "injection":
+        return DOCX_INJECTION_TOOLS + DIRECT_DOCX_TOOLS
+    if mode == "template":
+        return SOTA_TEMPLATE_TOOLS + AGENTIC_TEMPLATE_TOOLS + legacy_tools
+    if mode == "analytics":
+        return KAHUA_API_TOOLS
+    return get_all_tools()

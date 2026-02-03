@@ -744,6 +744,10 @@ def inject_token_in_paragraph(para: Paragraph, placeholder: DetectedPlaceholder)
     Preserves the label and its formatting, adds the token after.
     """
     try:
+        # Idempotency: skip if token already present
+        if placeholder.suggested_token in para.text:
+            return True
+
         full_text = para.text
         
         # Special case: Currency rows ending with just "$"
@@ -838,6 +842,8 @@ def inject_token_in_table_cell(
         table = doc.tables[placeholder.table_idx]
         cell = table.rows[placeholder.row_idx].cells[placeholder.cell_idx]
         para = cell.paragraphs[placeholder.paragraph_idx]
+        if placeholder.suggested_token in para.text:
+            return True
         
         return inject_token_in_paragraph(para, placeholder)
         
@@ -872,8 +878,13 @@ def inject_tokens(doc_bytes: bytes, plan: InjectionPlan) -> InjectionResult:
         for ph in table_placeholders:
             success = inject_token_in_table_cell(doc, ph)
             if success:
-                tokens_injected += 1
-                changes_made.append(f"Injected {ph.suggested_token} for '{ph.label}' in table")
+                if ph.suggested_token not in doc.tables[ph.table_idx].rows[ph.row_idx].cells[ph.cell_idx].paragraphs[ph.paragraph_idx].text:
+                    warnings.append(f"Token insertion check failed for '{ph.label}' in table")
+                else:
+                    # Only count as injected if it wasn't already present in the source bytes
+                    if ph.suggested_token.encode("utf-8") not in doc_bytes:
+                        tokens_injected += 1
+                        changes_made.append(f"Injected {ph.suggested_token} for '{ph.label}' in table")
             else:
                 warnings.append(f"Failed to inject token for '{ph.label}' in table")
         
@@ -882,8 +893,12 @@ def inject_tokens(doc_bytes: bytes, plan: InjectionPlan) -> InjectionResult:
             para = doc.paragraphs[ph.paragraph_idx]
             success = inject_token_in_paragraph(para, ph)
             if success:
-                tokens_injected += 1
-                changes_made.append(f"Injected {ph.suggested_token} for '{ph.label}'")
+                if ph.suggested_token not in para.text:
+                    warnings.append(f"Token insertion check failed for '{ph.label}'")
+                else:
+                    if ph.suggested_token.encode("utf-8") not in doc_bytes:
+                        tokens_injected += 1
+                        changes_made.append(f"Injected {ph.suggested_token} for '{ph.label}'")
             else:
                 warnings.append(f"Failed to inject token for '{ph.label}'")
         

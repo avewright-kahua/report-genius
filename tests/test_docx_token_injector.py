@@ -36,6 +36,10 @@ def test_injects_tokens_in_mixed_fixture() -> None:
         token = _token_for_label(placeholders, label)
         assert token in document_xml
 
+    # Idempotency: running again should not increase token count
+    second = analyze_and_inject(result["modified_document"], auto_inject=True)
+    assert second["injection"]["tokens_injected"] == 0
+
 
 def test_injects_tokens_in_table_fixture() -> None:
     docx_bytes = (FIXTURES_DIR / "placeholders_table.docx").read_bytes()
@@ -50,3 +54,6 @@ def test_injects_tokens_in_table_fixture() -> None:
     for label in ["Contractor", "Amount", "Start Date", "End Date"]:
         token = _token_for_label(placeholders, label)
         assert token in document_xml
+
+    second = analyze_and_inject(result["modified_document"], auto_inject=True)
+    assert second["injection"]["tokens_injected"] == 0

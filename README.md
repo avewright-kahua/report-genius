@@ -94,6 +94,26 @@ API endpoints:
 
 Fixtures for injection tests live in `tests/fixtures/docx`.
 
+## Agent Tooling Defaults
+
+Legacy PV/template tools are disabled by default to keep the toolset focused.
+Set `RG_ENABLE_LEGACY_TOOLS=true` to include them.
+
+Conversation summarization (for long sessions):
+- `RG_SUMMARY_TRIGGER_MESSAGES` (default 24)
+- `RG_SUMMARY_KEEP_MESSAGES` (default 12)
+
+Token injection confidence threshold:
+- `RG_INJECTION_CONFIDENCE_THRESHOLD` (default 0.7)
+
+## Eval Harness
+
+Run a lightweight eval for routing + injection:
+
+```bash
+python scripts/eval_agent.py
+```
+
 ## Template Archetypes
 
 8 pre-defined design patterns optimized for different use cases:
