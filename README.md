@@ -44,7 +44,7 @@ report-genius/
 ├── data/templates/                 # Template storage
 │
 ├── server.py                       # Main API entrypoint
-├── langgraph_agent.py              # LangGraph agent
+├── langgraph_agent.py              # Legacy wrapper (use report_genius.agent)
 ├── pyproject.toml                  # Package config
 └── README.md
 ```
@@ -74,6 +74,25 @@ template = PortableViewTemplate(
 renderer = DocxRenderer(template)
 renderer.render_to_file("output.docx")
 ```
+
+## Token Injection (DOCX)
+
+For uploaded “blank” templates, the token injector detects placeholder patterns and
+inserts Kahua tokens directly into the DOCX.
+
+Canonical module:
+`report_genius.injection.docx_token_injector`
+
+Quick CLI:
+```bash
+python -m report_genius.injection.docx_token_injector path/to/template.docx
+```
+
+API endpoints:
+- `POST /api/template/upload-analyze`
+- `POST /api/template/inject-tokens`
+
+Fixtures for injection tests live in `tests/fixtures/docx`.
 
 ## Template Archetypes
 

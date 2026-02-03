@@ -1025,7 +1025,7 @@ def analyze_uploaded_template(filename: str, entity_def: str = "") -> dict:
         Dict with detected placeholders and suggestions
     """
     try:
-        from docx_token_injector import analyze_and_inject
+        from report_genius.injection import analyze_and_inject
         
         file_path = _get_uploads_dir() / filename
         if not file_path.exists():
@@ -1069,7 +1069,7 @@ def inject_tokens_into_template(
         Dict with modified filename and download URL
     """
     try:
-        from docx_token_injector import analyze_and_inject, add_logo_placeholder, add_timestamp_token
+        from report_genius.injection import analyze_and_inject, add_logo_placeholder, add_timestamp_token
         
         file_path = _get_uploads_dir() / filename
         if not file_path.exists():
@@ -1131,7 +1131,7 @@ def show_token_mapping_guide() -> dict:
         Dict with common label mappings organized by category
     """
     try:
-        from docx_token_injector import LABEL_NORMALIZATIONS
+        from report_genius.injection import LABEL_NORMALIZATIONS
         
         identity = {}
         dates = {}
@@ -1212,7 +1212,7 @@ def process_attached_docx(
     """
     import base64
     try:
-        from docx_token_injector import analyze_and_inject
+        from report_genius.injection import analyze_and_inject
         
         # Decode base64 content
         try:

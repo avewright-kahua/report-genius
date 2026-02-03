@@ -20,7 +20,7 @@ REPORTS_DIR.mkdir(exist_ok=True)
 load_dotenv()
 
 # Use LangGraph agent (Claude via Anthropic SDK)
-from langgraph_agent import chat as langgraph_chat, get_agent, reset_session
+from report_genius.agent import chat as langgraph_chat, get_agent, reset_session
 import logging
 
 # Template builder API router
@@ -338,7 +338,7 @@ async def list_uploads() -> Dict[str, Any]:
 
 # ============== Template Upload & Token Analysis API ==============
 
-from docx_token_injector import analyze_and_inject, add_logo_placeholder, add_timestamp_token
+from report_genius.injection import analyze_and_inject, add_logo_placeholder, add_timestamp_token
 
 
 class TemplateAnalyzeRequest(BaseModel):

@@ -13,8 +13,6 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass
 
-from anthropic import AsyncAnthropic
-
 from pv_template_schema import (
     PortableTemplate, Section, SectionType, FieldMapping, FieldFormat,
     HeaderSection, DetailSection, TableSection, TextSection, ChartSection,
@@ -24,8 +22,7 @@ from pv_template_schema import (
 log = logging.getLogger("pv_template_analyzer")
 
 # Anthropic client (Claude on Azure) - lazy initialization
-# Import helper function from anthropic_model_adapter
-from anthropic_model_adapter import create_azure_anthropic_client
+from report_genius.llm import create_azure_anthropic_client
 
 _anthropic_client = None
 
