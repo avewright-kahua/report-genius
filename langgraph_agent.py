@@ -690,12 +690,12 @@ try:
     _active_templates: Dict[str, dict] = {}
     
     @tool
-    def get_entity_fields(entity_type: str, category: str = None) -> dict:
+    def get_template_fields(entity_type: str, category: str = None) -> dict:
         """
-        Show all available fields for an entity type, organized by category.
+        Show all available fields for an entity type from the template generation system.
         
-        USE THIS FIRST when a user asks for a template - show them what fields
-        are available so they can tell you what they want included.
+        This uses the built-in template schemas. For live Kahua schema data, use
+        get_entity_fields() from the schema service instead.
         
         Args:
             entity_type: Entity type (e.g., "Invoice", "RFI", "ExpenseContract")
@@ -704,12 +704,6 @@ try:
         
         Returns:
             Dict with fields organized by category, with labels and suggested formats
-        
-        Example:
-            User: "I want a template for RFIs"
-            -> Call get_entity_fields("RFI")
-            -> Show user the fields
-            -> Ask: "Which of these fields would you like included?"
         """
         try:
             system = get_unified_system()
@@ -1303,7 +1297,7 @@ try:
         list_template_entities,
         smart_compose_template,
         render_smart_template,
-        get_entity_fields,
+        get_template_fields,
         build_custom_template,
         modify_existing_template,
         preview_template_structure,
@@ -1536,15 +1530,210 @@ try:
             ]
         }
     
-    docx_injection_tools = [
+    # DEPRECATED: These regex-based tools are kept for backward compatibility
+    # but are NOT included in the main agent tools list.
+    # Use LLM-driven tools (analyze_template_with_llm, inject_tokens_with_llm) instead.
+    _deprecated_docx_injection_tools = [
         analyze_uploaded_template,
         inject_tokens_into_template,
         show_token_mapping_guide,
     ]
-    log.info("DOCX token injection tools loaded")
+    
+    # Only expose the mapping guide (useful reference), not the deprecated analyzers
+    docx_injection_tools = [show_token_mapping_guide]
+    log.info("DOCX token injection tools loaded (regex tools deprecated)")
 except ImportError as e:
     docx_injection_tools = []
     log.warning(f"DOCX injection tools not available: {e}")
+
+
+# ============== LLM-Driven Template Analysis Tools ==============
+
+try:
+    from llm_injection_analyzer import (
+        analyze_and_inject_with_llm,
+        analyze_document_with_llm,
+        inject_tokens_from_analysis,
+    )
+    
+    @tool
+    def analyze_template_with_llm(
+        filename: str,
+        entity_def: str = "",
+    ) -> dict:
+        """
+        USE THIS TOOL for analyzing uploaded templates - it's smarter than regex.
+        
+        This tool uses Claude to intelligently analyze a DOCX template and identify
+        ALL injection points, including complex patterns that regex misses:
+        
+        - Currency rows ending with just "$" (e.g., "Original Contract Sum    $")
+        - Checkbox fields (☐ increased ☐ decreased ☐ unchanged)
+        - Inline blanks within sentences (e.g., "unchanged by (   ) days")
+        - Conditional text patterns
+        - Date placeholders without obvious markers
+        - Any area where dynamic data should appear
+        
+        The LLM understands context and semantics, so it can:
+        - Infer correct field mappings from surrounding text
+        - Detect patterns that don't follow standard "Label: value" format
+        - Understand document domain (Change Orders, RFIs, Contracts, etc.)
+        
+        WORKFLOW:
+        1. User uploads a template file
+        2. Call this tool to get intelligent analysis
+        3. Review the detected injection points with the user
+        4. Call inject_tokens_with_llm to apply the changes
+        
+        Args:
+            filename: The uploaded file name (in uploads/ directory)
+            entity_def: Target Kahua entity for better field mapping
+            
+        Returns:
+            Dict with:
+            - document_summary: What the LLM understood about the document
+            - entity_type_detected: Inferred entity type
+            - injection_points: List of all detected injection locations with:
+                - original_text: The text in the document
+                - text_to_replace: What should be replaced
+                - kahua_field_path: Suggested Kahua field
+                - injection_type: currency/date/text/checkbox/etc.
+                - token: The Kahua token to inject
+                - reasoning: Why the LLM chose this mapping
+            - suggestions: Recommendations for the template
+        """
+        try:
+            file_path = UPLOADS_DIR / filename
+            if not file_path.exists():
+                return {"status": "error", "message": f"File not found: {filename}"}
+            
+            if not filename.lower().endswith(('.docx', '.doc')):
+                return {"status": "error", "message": "Only Word documents (.docx) are supported"}
+            
+            doc_bytes = file_path.read_bytes()
+            result = analyze_and_inject_with_llm(doc_bytes, entity_def=entity_def, auto_inject=False)
+            
+            if not result.get('success'):
+                return {"status": "error", "message": result.get('error', 'Analysis failed')}
+            
+            return {
+                "status": "ok",
+                "filename": filename,
+                "entity_def": entity_def or "(auto-detected)",
+                "document_summary": result['analysis']['document_summary'],
+                "entity_type_detected": result['analysis']['entity_type_detected'],
+                "injection_points_count": len(result['analysis']['injection_points']),
+                "injection_points": result['analysis']['injection_points'],
+                "warnings": result['analysis']['warnings'],
+                "suggestions": result['analysis']['suggestions'],
+            }
+        except Exception as e:
+            import traceback
+            return {"status": "error", "message": str(e), "trace": traceback.format_exc()}
+    
+    @tool
+    def inject_tokens_with_llm(
+        filename: str,
+        entity_def: str = "",
+        add_logo: bool = False,
+        add_timestamp: bool = False
+    ) -> dict:
+        """
+        Inject Kahua tokens into a template using LLM-detected injection points.
+        
+        This uses Claude to analyze the document and inject tokens into ALL
+        detected locations, including complex patterns like:
+        - Financial rows with "$" placeholders
+        - Checkbox/boolean fields
+        - Inline blanks within sentences
+        - Conditional selections
+        
+        Unlike the regex-based injector, this handles edge cases and understands context.
+        
+        Args:
+            filename: The uploaded file name to modify
+            entity_def: Target Kahua entity for field mapping
+            add_logo: Set True only if user explicitly requests a logo
+            add_timestamp: Set True only if user explicitly requests a timestamp
+            
+        Returns:
+            Dict with:
+            - modified_filename: New file with tokens injected
+            - download_url: URL to download the modified template
+            - tokens_injected: Number of tokens added
+            - changes: List of changes made
+            - injection_points: Details of what was injected where
+        """
+        try:
+            import os
+            from urllib.parse import quote
+            
+            file_path = UPLOADS_DIR / filename
+            if not file_path.exists():
+                return {"status": "error", "message": f"File not found: {filename}"}
+            
+            doc_bytes = file_path.read_bytes()
+            result = analyze_and_inject_with_llm(doc_bytes, entity_def=entity_def, auto_inject=True)
+            
+            if not result.get('success'):
+                return {"status": "error", "message": result.get('error', 'Analysis failed')}
+            
+            modified_doc = result.get('modified_document', doc_bytes)
+            aesthetics_added = []
+            
+            # Import add-on functions from original injector
+            from docx_token_injector import add_logo_placeholder, add_timestamp_token
+            
+            if add_logo:
+                modified_doc = add_logo_placeholder(modified_doc, position='header')
+                aesthetics_added.append("company_logo")
+            
+            if add_timestamp:
+                modified_doc = add_timestamp_token(modified_doc, position='footer')
+                aesthetics_added.append("timestamp")
+            
+            # Clean filename
+            base_filename = filename
+            if base_filename.startswith("tokenized_"):
+                base_filename = base_filename[10:]
+            
+            modified_filename = f"tokenized_{base_filename}"
+            modified_path = UPLOADS_DIR / modified_filename
+            modified_path.write_bytes(modified_doc)
+            
+            # Copy to reports for download
+            reports_dir = Path(__file__).parent / "reports"
+            reports_dir.mkdir(exist_ok=True)
+            (reports_dir / modified_filename).write_bytes(modified_doc)
+            
+            base_url = os.getenv("REPORT_BASE_URL", "http://localhost:8000")
+            encoded_filename = quote(modified_filename)
+            
+            return {
+                "status": "ok",
+                "original_filename": filename,
+                "modified_filename": modified_filename,
+                "download_url": f"{base_url}/reports/{encoded_filename}",
+                "document_summary": result['analysis']['document_summary'],
+                "tokens_injected": result['injection']['tokens_injected'],
+                "changes": result['injection']['changes_made'],
+                "injection_points": result['analysis']['injection_points'],
+                "aesthetics_added": aesthetics_added,
+                "warnings": result['analysis'].get('warnings', []),
+                "suggestions": result['analysis'].get('suggestions', []),
+            }
+        except Exception as e:
+            import traceback
+            return {"status": "error", "message": str(e), "trace": traceback.format_exc()}
+    
+    llm_injection_tools = [
+        analyze_template_with_llm,
+        inject_tokens_with_llm,
+    ]
+    log.info("LLM-driven injection tools loaded")
+except ImportError as e:
+    llm_injection_tools = []
+    log.warning(f"LLM injection tools not available: {e}")
 
 
 # ============== Agentic Template Completion Tools ==============
@@ -1722,30 +1911,57 @@ You are a helpful assistant that answers concisely and doesn't ramble/over-expla
 
 ╔════════════════════════════════════════════════════════════════════════════╗
 ║  IF USER MENTIONS AN UPLOADED FILE (.docx, .doc) OR SAYS "I UPLOADED":     ║
-║  → PRESERVE their document layout - use the INJECTION workflow             ║
-║  → Call analyze_uploaded_template(filename) to detect placeholders         ║
-║  → Call inject_tokens_into_template(filename) to add Kahua tokens          ║
-║  → NEVER generate a new template from scratch                              ║
 ║                                                                            ║
-║  File indicators: ".docx", "uploaded", "my template", "this template",     ║
-║  "the file", "attached", any filename ending in .docx or .doc              ║
+║  WORKFLOW (Schema-Aware LLM Analysis):                                     ║
+║  1. Call get_entity_fields(entity_type) to get REAL field paths            ║
+║  2. Call analyze_template_with_llm(filename, entity_def) with schema       ║
+║  3. Call inject_tokens_with_llm(filename, entity_def) to inject tokens     ║
+║                                                                            ║
+║  This approach:                                                            ║
+║  - Uses ACTUAL field paths from Kahua schema (not guesses)                 ║
+║  - Handles complex patterns (currency rows, checkboxes, inline blanks)     ║
+║  - Preserves user's document layout completely                             ║
+║                                                                            ║
+║  NEVER generate a new template when user uploads one - PRESERVE their      ║
+║  document layout and only inject tokens where blanks are detected.         ║
 ╚════════════════════════════════════════════════════════════════════════════╝
 
 When a user uploads a designed template (with their logo, layout, styling):
 1. Respect their design completely - do NOT regenerate
-2. Only inject Kahua tokens where blanks/placeholders are detected
-3. Ask ONE clarifying question if entity type is unclear:
-   "What entity type is this for? (RFI, Change Order, Invoice, etc.)"
+2. Determine the entity type (ask if unclear: "What entity type is this for?")
+3. Fetch the schema first: get_entity_fields("change order") 
+4. Then analyze and inject with full schema context
 
 ## TOOL SELECTION RULES
 
 ╔════════════════════════════════════════════════════════════════════════════╗
-║  UPLOADED FILE → analyze_uploaded_template → inject_tokens_into_template   ║
+║  UPLOADED FILE:                                                            ║
+║    get_entity_fields → analyze_template_with_llm → inject_tokens_with_llm  ║
+║                                                                            ║
+║  DISCOVER ENTITY TYPES:                                                    ║
+║    list_supported_entities → shows all known entity types + aliases        ║
+║                                                                            ║
+║  EXPLORE FIELDS:                                                           ║
+║    get_entity_fields("rfi") → shows all available fields with types        ║
 ║                                                                            ║
 ║  "CREATE/BUILD TEMPLATE" (no file) → build_custom_template → render        ║
 ║                                                                            ║
 ║  "REPORT" / "SHOW ME" / "LIST ALL" → query_entities → generate_report      ║
 ╚════════════════════════════════════════════════════════════════════════════╝
+
+## SCHEMA SERVICE
+
+Use get_entity_fields() and list_supported_entities() to understand what fields
+are available before creating templates or analyzing documents. The schema service:
+- Fetches REAL fields from Kahua API (not hardcoded guesses)
+- Caches results for performance  
+- Provides format hints (currency, date, boolean, etc.)
+- Shows sample values to understand field content
+
+Example: get_entity_fields("change order") returns:
+- currency fields: OriginalContractAmount, CurrentContractAmount, etc.
+- date fields: SubstantialCompletionDate, SubmittedDate, etc.
+- boolean fields: IsContractSumIncreased, IsContractTimeDecreased, etc.
 
 ## WHAT IS A TEMPLATE?
 
@@ -1899,15 +2115,31 @@ Users can upload existing Word templates that have "blank" placeholders like:
 - "ID: " (label with trailing whitespace)
 - "Status: ______" (label with underscores)
 - "Date: [blank]" or "Date: <value>"
+- Currency rows ending with "$" (e.g., "Original Contract Sum    $")
+- Checkbox patterns (☐ increased ☐ decreased)
+- Inline blanks like "(   ) days"
 
-### SIMPLE TOKEN INJECTION (Legacy):
+### LLM-DRIVEN INJECTION (PREFERRED - Use This!):
 
-For simple token replacement:
-1. Call `analyze_uploaded_template(filename, entity_def)` to detect placeholder patterns
-2. Call `inject_tokens_into_template(filename, entity_def)` to add tokens
-3. Return download link
+The LLM-driven analyzer is smarter and handles complex patterns that regex misses:
 
-### AGENTIC TEMPLATE COMPLETION (Preferred):
+1. Call `analyze_template_with_llm(filename, entity_def)` to get intelligent analysis
+   - Understands document context and semantics
+   - Detects checkboxes, currency rows, inline blanks, conditional text
+   - Maps fields based on surrounding context
+2. Review the detected injection points with user
+3. Call `inject_tokens_with_llm(filename, entity_def)` to inject all tokens
+4. Return download link
+
+Example:
+User: "I uploaded a Change Order template, process it"
+You: 
+1. analyze_template_with_llm("change_order.docx", "kahua_AEC_ChangeOrder.ChangeOrder")
+2. "I found 15 injection points including currency fields, checkboxes for increased/decreased, and contract time fields"
+3. inject_tokens_with_llm("change_order.docx", "kahua_AEC_ChangeOrder.ChangeOrder")
+4. Return download link
+
+### AGENTIC TEMPLATE COMPLETION (For Modern Features):
 
 For full template completion with modern features (page headers, footers, lists, etc.):
 
@@ -1959,13 +2191,86 @@ Common mappings:
 """
 
 
+# ============== Schema Service Tools ==============
+
+try:
+    from src.report_genius.schema_service import (
+        get_schema_service,
+        get_entity_schema as fetch_entity_schema,
+        resolve_entity,
+        get_display_name,
+    )
+    
+    @tool
+    async def get_entity_fields(entity_name: str) -> dict:
+        """
+        Get all fields available for an entity type.
+        
+        Use this tool to understand what fields can be used in templates.
+        Returns field paths, types, format hints (currency, date, etc.).
+        
+        Args:
+            entity_name: Entity type - can be natural language (e.g., "change order") 
+                        or full definition (e.g., "kahua_AEC_ChangeOrder.ChangeOrder")
+        
+        Returns:
+            Dict with entity_def, display_name, and fields organized by format type
+        """
+        try:
+            schema = await fetch_entity_schema(entity_name)
+            if not schema:
+                return {"error": f"Could not fetch schema for '{entity_name}'"}
+            
+            # Organize fields by format
+            by_format = {}
+            for f in schema.fields:
+                by_format.setdefault(f.format_hint, []).append({
+                    "path": f.path,
+                    "label": f.label,
+                    "sample": f.sample_value,
+                })
+            
+            return {
+                "entity_def": schema.entity_def,
+                "display_name": schema.display_name,
+                "field_count": len(schema.fields),
+                "fields_by_type": by_format,
+                "child_collections": schema.child_collections,
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    @tool
+    def list_supported_entities() -> dict:
+        """
+        List all known entity types and their aliases.
+        
+        Use this tool to discover what entity types the user might be
+        referring to (e.g., "change order", "rfi", "submittal").
+        
+        Returns:
+            List of entity definitions with display names and aliases
+        """
+        service = get_schema_service()
+        return {
+            "entities": service.list_known_entities()
+        }
+    
+    schema_tools = [get_entity_fields, list_supported_entities]
+    log.info("Schema service tools loaded")
+except ImportError as e:
+    schema_tools = []
+    log.warning(f"Schema service tools not available: {e}")
+
+
 # ============== Graph Definition ==============
 
 def create_agent():
     """Create the LangGraph agent."""
     
-    # All tools - include unified SOTA tools, DOCX injection, and agentic completion
-    all_tools = [find_project, count_entities, query_entities, get_entity_schema, generate_report] + pv_tools + template_gen_tools + unified_template_tools + docx_injection_tools + agentic_template_tools
+    # All tools - include unified SOTA tools, DOCX injection, LLM injection, schema tools, and agentic completion
+    # Note: get_entity_schema replaced by get_entity_fields from schema service (more comprehensive)
+    all_tools = [find_project, count_entities, query_entities, generate_report] + pv_tools + template_gen_tools + unified_template_tools + docx_injection_tools + llm_injection_tools + schema_tools + agentic_template_tools
     
     # Create LLM with tools bound
     llm = create_llm()

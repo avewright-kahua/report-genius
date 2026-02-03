@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -35,6 +35,11 @@ from pv_template_schema import (
     StyleConfig,
 )
 from pv_template_analyzer import analyze_document_description, refine_template
+from llm_injection_analyzer import (
+    analyze_and_inject_with_llm,
+    analyze_document_with_llm_async,
+    inject_tokens_from_analysis,
+)
 from pv_template_renderer import TemplateRenderer
 
 log = logging.getLogger("template_builder_api")
@@ -424,6 +429,354 @@ async def list_available_entities() -> List[Dict[str, str]]:
     ]
 
 
+# ============== Schema Service Endpoints ==============
+
+try:
+    from src.report_genius.schema_service import (
+        get_schema_service,
+        get_entity_schema,
+        resolve_entity,
+        EntitySchema,
+    )
+    SCHEMA_SERVICE_AVAILABLE = True
+except ImportError:
+    SCHEMA_SERVICE_AVAILABLE = False
+    log.warning("Schema service not available - using legacy entity endpoints")
+
+
+@router.get("/schema/entities")
+async def list_schema_entities() -> Dict[str, Any]:
+    """
+    List all known entity types with their aliases.
+    
+    Returns entity definitions, display names, and natural language aliases
+    that can be used to reference each entity type.
+    """
+    if not SCHEMA_SERVICE_AVAILABLE:
+        # Fallback to hardcoded list
+        return {
+            "entities": [
+                {"entity_def": k, "display_name": v, "aliases": []}
+                for k, v in ENTITY_DISPLAY_NAMES.items()
+            ]
+        }
+    
+    service = get_schema_service()
+    return {"entities": service.list_known_entities()}
+
+
+@router.get("/schema/fields/{entity_name:path}")
+async def get_schema_fields(entity_name: str) -> Dict[str, Any]:
+    """
+    Get all fields for an entity type from the schema service.
+    
+    This fetches REAL fields from Kahua API (with caching).
+    
+    Args:
+        entity_name: Entity type - can be natural language ("change order") 
+                    or full definition ("kahua_AEC_ChangeOrder.ChangeOrder")
+    
+    Returns:
+        Entity schema with fields organized by format type (currency, date, etc.)
+    """
+    if not SCHEMA_SERVICE_AVAILABLE:
+        raise HTTPException(
+            status_code=503, 
+            detail="Schema service not available. Use /schema/{entity_def} instead."
+        )
+    
+    try:
+        schema = await get_entity_schema(entity_name)
+        if not schema:
+            raise HTTPException(status_code=404, detail=f"Entity '{entity_name}' not found")
+        
+        # Organize fields by format for frontend
+        by_format = {}
+        for f in schema.fields:
+            by_format.setdefault(f.format_hint, []).append({
+                "path": f.path,
+                "name": f.name,
+                "label": f.label,
+                "data_type": f.data_type,
+                "sample": f.sample_value,
+                "is_reference": f.is_reference,
+            })
+        
+        return {
+            "entity_def": schema.entity_def,
+            "display_name": schema.display_name,
+            "field_count": len(schema.fields),
+            "fields": [
+                {"path": f.path, "name": f.name, "label": f.label, 
+                 "data_type": f.data_type, "format_hint": f.format_hint,
+                 "sample": f.sample_value, "is_reference": f.is_reference}
+                for f in schema.fields
+            ],
+            "fields_by_type": by_format,
+            "child_collections": schema.child_collections,
+            "cached_at": schema.fetched_at.isoformat() if schema.fetched_at else None,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"Error fetching schema for {entity_name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/schema/resolve/{entity_name:path}")
+async def resolve_entity_name(entity_name: str) -> Dict[str, str]:
+    """
+    Resolve a natural language entity name to its full definition.
+    
+    Examples:
+        "change order" -> "kahua_AEC_ChangeOrder.ChangeOrder"
+        "rfi" -> "kahua_AEC_RFI.RFI"
+    """
+    if not SCHEMA_SERVICE_AVAILABLE:
+        # Simple fallback
+        for entity_def, display_name in ENTITY_DISPLAY_NAMES.items():
+            if entity_name.lower() in display_name.lower():
+                return {"entity_def": entity_def, "display_name": display_name}
+        raise HTTPException(status_code=404, detail=f"Entity '{entity_name}' not found")
+    
+    entity_def = resolve_entity(entity_name)
+    if not entity_def or entity_def == entity_name:
+        raise HTTPException(status_code=404, detail=f"Entity '{entity_name}' not found")
+    
+    service = get_schema_service()
+    return {
+        "entity_def": entity_def,
+        "display_name": service.get_display_name(entity_def),
+    }
+
+
+# ============== Interactive Review Flow ==============
+
+class AnalysisSession(BaseModel):
+    """Session for interactive review of injection points."""
+    session_id: str
+    filename: str
+    entity_def: str
+    injection_points: List[Dict[str, Any]]
+    document_summary: str
+    warnings: List[str] = []
+    suggestions: List[str] = []
+
+
+class ReviewedInjectionPoint(BaseModel):
+    """A reviewed/modified injection point from the user."""
+    location_type: str
+    paragraph_index: Optional[int] = None
+    table_index: Optional[int] = None
+    row_index: Optional[int] = None
+    cell_index: Optional[int] = None
+    original_text: str
+    text_to_replace: str
+    kahua_field_path: str
+    injection_type: str
+    approved: bool = True  # User can reject individual points
+    modified_path: Optional[str] = None  # User can change the field path
+
+
+class ApplyReviewedInjectionsRequest(BaseModel):
+    """Request to apply reviewed injection points."""
+    session_id: str
+    injection_points: List[ReviewedInjectionPoint]
+
+
+# In-memory session storage (for demo; use Redis/DB in production)
+_analysis_sessions: Dict[str, Dict[str, Any]] = {}
+
+
+@router.post("/analyze-for-review")
+async def analyze_for_review(
+    file: UploadFile = File(...),
+    entity_def: str = Form(""),
+) -> Dict[str, Any]:
+    """
+    Analyze a document and return injection points for interactive review.
+    
+    This is step 1 of the review flow:
+    1. Upload document → get analysis with injection points
+    2. User reviews/modifies/approves injection points
+    3. Apply approved injections
+    
+    Returns:
+        Session with injection points that user can review/modify
+    """
+    import uuid
+    
+    try:
+        doc_bytes = await file.read()
+        
+        # Resolve entity if provided
+        resolved_entity = entity_def
+        if SCHEMA_SERVICE_AVAILABLE and entity_def:
+            resolved_entity = resolve_entity(entity_def) or entity_def
+        
+        # Analyze with LLM
+        result = await analyze_document_with_llm_async(doc_bytes, resolved_entity)
+        
+        if not result.success:
+            raise HTTPException(status_code=500, detail=result.error or "Analysis failed")
+        
+        # Create session
+        session_id = f"review-{uuid.uuid4().hex[:8]}"
+        
+        # Convert injection points to serializable format
+        points = []
+        for p in result.injection_points:
+            points.append({
+                "id": f"ip-{len(points)}",
+                "location_type": p.location_type,
+                "paragraph_index": p.paragraph_index,
+                "table_index": p.table_index,
+                "row_index": p.row_index,
+                "cell_index": p.cell_index,
+                "original_text": p.original_text,
+                "text_to_replace": p.text_to_replace,
+                "kahua_field_path": p.kahua_field_path,
+                "injection_type": p.injection_type.value,
+                "token": p.token,
+                "reasoning": p.reasoning,
+                "confidence": p.confidence,
+                "approved": True,  # Default to approved
+            })
+        
+        # Store session with document bytes
+        _analysis_sessions[session_id] = {
+            "doc_bytes": doc_bytes,
+            "filename": file.filename,
+            "entity_def": resolved_entity,
+            "injection_points": points,
+        }
+        
+        return {
+            "session_id": session_id,
+            "filename": file.filename,
+            "entity_def": resolved_entity,
+            "document_summary": result.document_summary,
+            "entity_type_detected": result.entity_type_detected,
+            "injection_points": points,
+            "warnings": result.warnings,
+            "suggestions": result.suggestions,
+            "total_points": len(points),
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"Analysis for review failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/apply-reviewed-injections")
+async def apply_reviewed_injections(
+    session_id: str = Form(...),
+    injection_points_json: str = Form(...),  # JSON array of reviewed points
+) -> Dict[str, Any]:
+    """
+    Apply user-reviewed injection points to the document.
+    
+    This is step 2 of the review flow:
+    - Only approved injection points are applied
+    - User-modified field paths are used
+    
+    Returns:
+        Modified document as base64 + summary of changes
+    """
+    import base64
+    from llm_injection_analyzer import InjectionPoint, InjectionType, LLMAnalysisResult, inject_tokens_from_analysis
+    
+    try:
+        # Get session
+        if session_id not in _analysis_sessions:
+            raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found or expired")
+        
+        session = _analysis_sessions[session_id]
+        doc_bytes = session["doc_bytes"]
+        
+        # Parse reviewed injection points
+        reviewed_points = json.loads(injection_points_json)
+        
+        # Filter to approved only and apply user modifications
+        approved_points = []
+        for rp in reviewed_points:
+            if not rp.get("approved", True):
+                continue
+            
+            # Use modified path if provided
+            field_path = rp.get("modified_path") or rp.get("kahua_field_path", "")
+            
+            ip = InjectionPoint(
+                location_type=rp.get("location_type", "paragraph"),
+                paragraph_index=rp.get("paragraph_index"),
+                table_index=rp.get("table_index"),
+                row_index=rp.get("row_index"),
+                cell_index=rp.get("cell_index"),
+                original_text=rp.get("original_text", ""),
+                text_to_replace=rp.get("text_to_replace", ""),
+                kahua_field_path=field_path,
+                injection_type=InjectionType(rp.get("injection_type", "text")),
+            )
+            
+            # Regenerate token with possibly modified path
+            from llm_injection_analyzer import _generate_token
+            ip.token = _generate_token(ip)
+            approved_points.append(ip)
+        
+        # Create analysis result for injection
+        analysis = LLMAnalysisResult(
+            success=True,
+            injection_points=approved_points,
+        )
+        
+        # Inject tokens
+        modified_doc, changes = inject_tokens_from_analysis(doc_bytes, analysis)
+        
+        # Clean up session
+        del _analysis_sessions[session_id]
+        
+        return {
+            "status": "ok",
+            "original_filename": session["filename"],
+            "download_filename": f"tokenized_{session['filename']}",
+            "document_base64": base64.b64encode(modified_doc).decode('utf-8'),
+            "tokens_injected": len(approved_points),
+            "tokens_rejected": len(reviewed_points) - len(approved_points),
+            "changes_made": changes,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"Apply reviewed injections failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/review-session/{session_id}")
+async def get_review_session(session_id: str) -> Dict[str, Any]:
+    """Get the current state of a review session."""
+    if session_id not in _analysis_sessions:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+    
+    session = _analysis_sessions[session_id]
+    return {
+        "session_id": session_id,
+        "filename": session["filename"],
+        "entity_def": session["entity_def"],
+        "injection_points": session["injection_points"],
+    }
+
+
+@router.delete("/review-session/{session_id}")
+async def cancel_review_session(session_id: str) -> Dict[str, str]:
+    """Cancel/delete a review session."""
+    if session_id in _analysis_sessions:
+        del _analysis_sessions[session_id]
+    return {"status": "ok", "message": f"Session {session_id} cancelled"}
+
+
 # ============== Template CRUD ==============
 
 @router.post("/save")
@@ -698,6 +1051,220 @@ class AIInlineRequest(BaseModel):
     prompt: str
     context: str
     entityDef: str
+
+
+# ============== LLM-Driven Document Analysis ==============
+
+class AnalyzeDocumentRequest(BaseModel):
+    """Request to analyze a DOCX document for token injection."""
+    entity_def: str = ""
+    auto_inject: bool = False
+
+
+@router.post("/analyze-document")
+async def analyze_document_endpoint(
+    file: bytes = None,
+    entity_def: str = "",
+    auto_inject: bool = False,
+):
+    """
+    Analyze a DOCX document using LLM to identify all injection points.
+    
+    This endpoint uses Claude to intelligently analyze the document structure
+    and identify locations needing Kahua tokens - replacing the regex-based approach.
+    
+    Args:
+        file: The DOCX file bytes
+        entity_def: Target entity type (e.g., "kahua_AEC_ChangeOrder.ChangeOrder")
+        auto_inject: If True, automatically inject tokens and return modified document
+        
+    Returns:
+        Analysis results with injection points and optionally modified document
+    """
+    # This endpoint should be called with multipart form data
+    # For now, return usage instructions
+    return {
+        "error": "Use multipart form upload",
+        "usage": "POST with file upload and form fields: entity_def, auto_inject"
+    }
+
+
+@router.post("/analyze-upload")
+async def analyze_uploaded_document(
+    entity_def: str = Form(""),
+    auto_inject: bool = Form(False),
+):
+    """
+    Analyze an uploaded DOCX document using LLM.
+    
+    This is the main endpoint for LLM-driven template analysis.
+    """
+    # Note: File upload handling requires special setup
+    # This is a placeholder - see /analyze-docx for actual implementation
+    return {"status": "Use /analyze-docx endpoint with file upload"}
+
+
+@router.post("/analyze-docx")
+async def analyze_docx_with_llm(
+    file: UploadFile = File(...),
+    entity_def: str = Form(""),
+    auto_inject: bool = Form(False),
+):
+    """
+    LLM-driven analysis of DOCX documents for token injection.
+    
+    Unlike the regex-based approach, this uses Claude to:
+    1. Understand document context and semantics
+    2. Identify ALL injection points including complex patterns
+    3. Handle checkboxes, conditional text, inline blanks
+    4. Infer correct field mappings from context
+    
+    Args:
+        file: DOCX file upload
+        entity_def: Target entity type (e.g., "kahua_AEC_ChangeOrder.ChangeOrder")
+        auto_inject: If True, inject tokens and return modified document
+        
+    Returns:
+        JSON with analysis results and optionally base64-encoded modified document
+    """
+    import base64
+    
+    try:
+        # Read uploaded file
+        doc_bytes = await file.read()
+        
+        if not doc_bytes:
+            raise HTTPException(status_code=400, detail="Empty file uploaded")
+        
+        log.info(f"Analyzing document: {file.filename}, entity: {entity_def}, auto_inject: {auto_inject}")
+        
+        # Get schema fields if entity_def provided
+        schema_fields = []
+        if entity_def:
+            try:
+                schema = await get_entity_schema(entity_def)
+                schema_fields = schema.get("attributes", [])
+                log.info(f"Loaded {len(schema_fields)} schema fields for {entity_def}")
+            except Exception as e:
+                log.warning(f"Could not load schema for {entity_def}: {e}")
+        
+        # Analyze with LLM (async version)
+        analysis = await analyze_document_with_llm_async(doc_bytes, entity_def, schema_fields)
+        
+        if not analysis.success:
+            return {
+                "status": "error",
+                "error": analysis.error,
+                "analysis": None
+            }
+        
+        result = {
+            "status": "ok",
+            "analysis": {
+                "document_summary": analysis.document_summary,
+                "entity_type_detected": analysis.entity_type_detected,
+                "injection_points_count": len(analysis.injection_points),
+                "injection_points": [
+                    {
+                        "location_type": p.location_type,
+                        "paragraph_index": p.paragraph_index,
+                        "table_index": p.table_index,
+                        "row_index": p.row_index,
+                        "cell_index": p.cell_index,
+                        "original_text": p.original_text[:200] + "..." if len(p.original_text) > 200 else p.original_text,
+                        "text_to_replace": p.text_to_replace,
+                        "kahua_field_path": p.kahua_field_path,
+                        "injection_type": p.injection_type.value,
+                        "token": p.token,
+                        "reasoning": p.reasoning,
+                        "confidence": p.confidence,
+                    }
+                    for p in analysis.injection_points
+                ],
+                "warnings": analysis.warnings,
+                "suggestions": analysis.suggestions,
+            }
+        }
+        
+        # Inject tokens if requested
+        if auto_inject and analysis.injection_points:
+            modified_doc, changes = inject_tokens_from_analysis(doc_bytes, analysis)
+            result["injection"] = {
+                "success": True,
+                "tokens_injected": len(changes),
+                "changes_made": changes,
+            }
+            # Return modified document as base64
+            result["modified_document_base64"] = base64.b64encode(modified_doc).decode('utf-8')
+            result["download_filename"] = f"tokenized_{file.filename}"
+        
+        return result
+        
+    except Exception as e:
+        log.error(f"Document analysis error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/inject-tokens")
+async def inject_tokens_endpoint(
+    file: UploadFile = File(...),
+    injection_points: str = Form(...),  # JSON string of injection points
+):
+    """
+    Inject tokens into a document based on provided injection points.
+    
+    This allows reviewing/editing the LLM's analysis before injection.
+    
+    Args:
+        file: Original DOCX file
+        injection_points: JSON array of injection point specifications
+        
+    Returns:
+        Base64-encoded modified document
+    """
+    import base64
+    from llm_injection_analyzer import InjectionPoint, InjectionType, LLMAnalysisResult
+    
+    try:
+        doc_bytes = await file.read()
+        points_data = json.loads(injection_points)
+        
+        # Reconstruct injection points
+        points = []
+        for p in points_data:
+            point = InjectionPoint(
+                location_type=p.get("location_type", "paragraph"),
+                paragraph_index=p.get("paragraph_index"),
+                table_index=p.get("table_index"),
+                row_index=p.get("row_index"),
+                cell_index=p.get("cell_index"),
+                original_text=p.get("original_text", ""),
+                text_to_replace=p.get("text_to_replace", ""),
+                kahua_field_path=p.get("kahua_field_path", ""),
+                injection_type=InjectionType(p.get("injection_type", "text")),
+                token=p.get("token", ""),
+                reasoning=p.get("reasoning", ""),
+                confidence=p.get("confidence", 0.8),
+            )
+            points.append(point)
+        
+        # Create analysis result for injection
+        analysis = LLMAnalysisResult(success=True, injection_points=points)
+        
+        # Inject
+        modified_doc, changes = inject_tokens_from_analysis(doc_bytes, analysis)
+        
+        return {
+            "status": "ok",
+            "tokens_injected": len(changes),
+            "changes_made": changes,
+            "modified_document_base64": base64.b64encode(modified_doc).decode('utf-8'),
+            "download_filename": f"tokenized_{file.filename}",
+        }
+        
+    except Exception as e:
+        log.error(f"Token injection error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
     selectionStart: int
     selectionEnd: int
 
